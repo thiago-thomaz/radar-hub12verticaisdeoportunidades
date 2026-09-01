@@ -1,0 +1,168 @@
+{
+  "name": "[RADAR_HUB] - 06 Resilient Scraper with Anti-Block & Backoff",
+  "nodes": [
+    {
+      "parameters": {
+        "rule": {
+          "interval": [
+            {
+              "field": "minutes",
+              "minutesInterval": 10
+            }
+          ]
+        }
+      },
+      "id": "trigger-resilient",
+      "name": "Poll Sensitive Target (10m)",
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "typeVersion": 1.2,
+      "position": [160, 300]
+    },
+    {
+      "parameters": {
+        "jsCode": "// Rotação de User-Agent e Geração de Headers Anti-Detecção\nconst uas = [\n  'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36',\n  'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/121.0.0.0 Safari/537.36',\n  'Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36'\n];\nconst selectedUa = uas[Math.floor(Math.random() * uas.length)];\n\nreturn [{\n  json: {\n    url: 'https://ecommerce-alvo.com/api/deals',\n    headers: {\n      'User-Agent': selectedUa,\n      'Accept-Language': 'pt-BR,pt;q=0.9',\n      'Cache-Control': 'no-cache'\n    },\n    retryCount: 0\n  }\n}];"
+      },
+      "id": "code-headers-rotate",
+      "name": "Rotate User-Agent & Headers",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [380, 300]
+    },
+    {
+      "parameters": {
+        "url": "={{ $json.url }}",
+        "headerParametersUi": {
+          "parameter": [
+            {
+              "name": "User-Agent",
+              "value": "={{ $json.headers['User-Agent'] }}"
+            },
+            {
+              "name": "Accept-Language",
+              "value": "={{ $json.headers['Accept-Language'] }}"
+            }
+          ]
+        },
+        "options": {
+          "timeout": 12000
+        }
+      },
+      "id": "http-scraper-request",
+      "name": "HTTP Scrape Request",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [600, 300],
+      "continueOnFail": true
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "number": [
+            {
+              "value1": "={{ $json.statusCode || 200 }}",
+              "operation": "equal",
+              "value2": 429
+            }
+          ]
+        }
+      },
+      "id": "if-rate-limited",
+      "name": "Check Rate Limit / 429",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [820, 300]
+    },
+    {
+      "parameters": {
+        "amount": 5,
+        "unit": "seconds"
+      },
+      "id": "wait-backoff",
+      "name": "Exponential Backoff Wait (5s)",
+      "type": "n8n-nodes-base.wait",
+      "typeVersion": 1.1,
+      "position": [1040, 200],
+      "webhookId": "radar-backoff-wait"
+    },
+    {
+      "parameters": {
+        "chatId": "=@canal_radar_hub_admin",
+        "text": "⚠️ [ALERTA DE BLOQUEIO] O portal alvo exigiu validação manual ou retornou CAPTCHA. O scraper foi pausado com segurança.",
+        "additionalFields": {}
+      },
+      "id": "tg-alert-blocked",
+      "name": "Notify Admin Block/Captcha",
+      "type": "n8n-nodes-base.telegram",
+      "typeVersion": 1.2,
+      "position": [1040, 420],
+      "continueOnFail": true,
+      "credentials": {
+        "telegramApi": {
+          "id": "CREDENTIAL_RADAR_TELEGRAM",
+          "name": "Telegram Bot (RADAR_HUB)"
+        }
+      }
+    }
+  ],
+  "connections": {
+    "Poll Sensitive Target (10m)": {
+      "main": [
+        [
+          {
+            "node": "Rotate User-Agent & Headers",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Rotate User-Agent & Headers": {
+      "main": [
+        [
+          {
+            "node": "HTTP Scrape Request",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "HTTP Scrape Request": {
+      "main": [
+        [
+          {
+            "node": "Check Rate Limit / 429",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Check Rate Limit / 429": {
+      "main": [
+        [
+          {
+            "node": "Exponential Backoff Wait (5s)",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Notify Admin Block/Captcha",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "settings": {
+    "executionOrder": "v1"
+  },
+  "tags": [
+    {
+      "name": "RADAR_HUB"
+    }
+  ]
+}

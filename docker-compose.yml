@@ -1,0 +1,304 @@
+version: '3.8'
+
+services:
+  # ============================================================================
+  # 1. BANCO DE DADOS: PostgreSQL 16 com TimescaleDB / Particionamento
+  # ============================================================================
+  postgres:
+    image: timescale/timescaledb:latest-pg16
+    container_name: radar_postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: ${DB_USER:-radar_admin}
+      POSTGRES_PASSWORD: ${DB_PASSWORD:-radar_secure_pass_2026}
+      POSTGRES_DB: ${DB_NAME:-radar_hub_db}
+      POSTGRES_MULTIPLE_DATABASES: ${DB_NAME:-radar_hub_db},${N8N_DB_NAME:-radar_hub_n8n}
+    ports:
+      - "${DB_PORT:-5432}:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+      - ./database:/docker-entrypoint-initdb.d:ro
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${DB_USER:-radar_admin} -d ${DB_NAME:-radar_hub_db}"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
+    networks:
+      - radar_network
+
+  # ============================================================================
+  # 2. CACHE & FILAS: Redis 7
+  # ============================================================================
+  redis:
+    image: redis:7-alpine
+    container_name: radar_redis
+    restart: unless-stopped
+    command: ["redis-server", "--appendonly", "yes", "--requirepass", "${REDIS_PASSWORD:-radar_redis_pass_2026}"]
+    ports:
+      - "${REDIS_PORT:-6379}:6379"
+    volumes:
+      - redis_data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "-a", "${REDIS_PASSWORD:-radar_redis_pass_2026}", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks:
+      - radar_network
+
+  # ============================================================================
+  # 3. MOTOR DE ORQUESTRAÇÃO: n8n (18 Pipelines)
+  # ============================================================================
+  n8n:
+    image: docker.n8n.io/n8nio/n8n:latest
+    container_name: radar_n8n
+    restart: unless-stopped
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    environment:
+      DB_TYPE: postgresdb
+      DB_POSTGRESDB_HOST: postgres
+      DB_POSTGRESDB_PORT: 5432
+      DB_POSTGRESDB_DATABASE: ${N8N_DB_NAME:-radar_hub_n8n}
+      DB_POSTGRESDB_USER: ${DB_USER:-radar_admin}
+      DB_POSTGRESDB_PASSWORD: ${DB_PASSWORD:-radar_secure_pass_2026}
+      DB_POSTGRESDB_SCHEMA: public
+
+      N8N_HOST: ${N8N_HOST:-localhost}
+      N8N_PORT: 5678
+      N8N_PROTOCOL: ${N8N_PROTOCOL:-http}
+      WEBHOOK_URL: ${WEBHOOK_URL:-http://localhost:5678/}
+
+      EXECUTIONS_DATA_PRUNE: "true"
+      EXECUTIONS_DATA_MAX_AGE: "168"
+      EXECUTIONS_DATA_PRUNE_MAX_COUNT: "50000"
+      EXECUTIONS_PROCESS: main
+
+      RADAR_API_URL: http://radar_app:3000
+      TELEGRAM_BOT_TOKEN: ${TELEGRAM_BOT_TOKEN}
+      TELEGRAM_VIP_CHANNEL_ID: ${TELEGRAM_VIP_CHANNEL_ID}
+      TELEGRAM_FREE_CHANNEL_ID: ${TELEGRAM_FREE_CHANNEL_ID}
+      DISCORD_WEBHOOK_URL: ${DISCORD_WEBHOOK_URL}
+      PROXIES_LIST: ${PROXIES_LIST}
+    ports:
+      - "${N8N_PORT:-5678}:5678"
+    volumes:
+      - n8n_data:/home/node/.n8n
+      - ./workflows:/data/workflows:ro
+    healthcheck:
+      test: ["CMD-SHELL", "wget -q -O - http://127.0.0.1:5678/healthz || exit 1"]
+      interval: 15s
+      timeout: 10s
+      retries: 5
+      start_period: 20s
+    networks:
+      - radar_network
+
+  # ============================================================================
+  # 4. APLICAÇÃO COCKPIT: Dashboard Web, API & WebSocket Server
+  # ============================================================================
+  radar_app:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: radar_app
+    restart: unless-stopped
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    environment:
+      PORT: 3000
+      NODE_ENV: ${NODE_ENV:-production}
+      DATABASE_URL: postgres://${DB_USER:-radar_admin}:${DB_PASSWORD:-radar_secure_pass_2026}@postgres:5432/${DB_NAME:-radar_hub_db}
+      REDIS_URL: redis://:${REDIS_PASSWORD:-radar_redis_pass_2026}@redis:6379
+      TELEGRAM_BOT_TOKEN: ${TELEGRAM_BOT_TOKEN}
+      TELEGRAM_VIP_CHANNEL_ID: ${TELEGRAM_VIP_CHANNEL_ID}
+      TELEGRAM_FREE_CHANNEL_ID: ${TELEGRAM_FREE_CHANNEL_ID}
+      DISCORD_WEBHOOK_URL: ${DISCORD_WEBHOOK_URL}
+    ports:
+      - "${PORT:-3000}:3000"
+    healthcheck:
+      test: ["CMD-SHELL", "wget -q -O - http://127.0.0.1:3000/health || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 3
+      start_period: 10s
+    networks:
+      - radar_network
+
+  # ============================================================================
+  # 5. OBSERVABILIDADE: Prometheus v2.51
+  # ============================================================================
+  prometheus:
+    image: prom/prometheus:v2.51.0
+    container_name: radar_prometheus
+    restart: unless-stopped
+    command:
+      - '--config.file=/etc/prometheus/prometheus.yml'
+      - '--storage.tsdb.path=/prometheus'
+      - '--storage.tsdb.retention.time=15d'
+      - '--web.console.libraries=/usr/share/prometheus/console_libraries'
+      - '--web.console.templates=/usr/share/prometheus/consoles'
+      - '--web.enable-lifecycle'
+    volumes:
+      - ./monitoring/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+      - prometheus_data:/prometheus
+    ports:
+      - "9090:9090"
+    networks:
+      - radar_network
+
+  # ============================================================================
+  # 6. VISUALIZAÇÃO: Grafana 10.4
+  # ============================================================================
+  grafana:
+    image: grafana/grafana:10.4.0
+    container_name: radar_grafana
+    restart: unless-stopped
+    depends_on:
+      - prometheus
+    environment:
+      - GF_SECURITY_ADMIN_USER=${GRAFANA_ADMIN_USER:-admin}
+      - GF_SECURITY_ADMIN_PASSWORD=${GRAFANA_ADMIN_PASSWORD:-radar_grafana_pass_2026}
+      - GF_USERS_ALLOW_SIGN_UP=false
+      - GF_SERVER_ROOT_URL=%(protocol)s://%(domain)s:%(http_port)s/grafana/
+      - GF_SERVER_SERVE_FROM_SUB_PATH=true
+    volumes:
+      - grafana_data:/var/lib/grafana
+      - ./monitoring/grafana_datasources.yml:/etc/grafana/provisioning/datasources/datasources.yml:ro
+      - ./monitoring/grafana_dashboards_provider.yml:/etc/grafana/provisioning/dashboards/dashboards.yml:ro
+      - ./monitoring/grafana_dashboard.json:/etc/grafana/provisioning/dashboards/grafana_dashboard.json:ro
+    ports:
+      - "3001:3000"
+    networks:
+      - radar_network
+
+  # ============================================================================
+  # 7. PROXY REVERSO SEGURO & GATEWAY: Nginx 1.25 Alpine
+  # ============================================================================
+  nginx:
+    image: nginx:1.25-alpine
+    container_name: radar_nginx_gateway
+    restart: unless-stopped
+    depends_on:
+      - radar_app
+      - grafana
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - ./nginx/nginx.conf:/etc/nginx/nginx.conf:ro
+      - ./nginx/conf.d:/etc/nginx/conf.d:ro
+      - ./dashboard:/usr/share/nginx/html/dashboard:ro
+    networks:
+      - radar_network
+
+  # ============================================================================
+  # 8. EXPORTERS DEDICADOS: Postgres & Redis
+  # ============================================================================
+  postgres_exporter:
+    image: prometheuscommunity/postgres-exporter:latest
+    container_name: radar_postgres_exporter
+    restart: unless-stopped
+    environment:
+      DATA_SOURCE_NAME: "postgresql://${DB_USER:-radar_admin}:${DB_PASSWORD:-radar_secure_pass_2026}@postgres:5432/${DB_NAME:-radar_hub_db}?sslmode=disable"
+    networks:
+      - radar_network
+
+  redis_exporter:
+    image: oliver006/redis_exporter:latest
+    container_name: radar_redis_exporter
+    restart: unless-stopped
+    environment:
+      REDIS_ADDR: "redis://redis:6379"
+      REDIS_PASSWORD: "${REDIS_PASSWORD:-radar_redis_pass_2026}"
+    networks:
+      - radar_network
+
+  # ============================================================================
+  # 9. DISASTER RECOVERY & BACKUP SIDECAR: Backup e Rotação Automática
+  # ============================================================================
+  backup_worker:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: radar_backup_worker
+    restart: unless-stopped
+    depends_on:
+      postgres:
+        condition: service_healthy
+    command: ["npx", "tsx", "scripts/backup/db_backup.ts"]
+    environment:
+      DATABASE_URL: postgres://${DB_USER:-radar_admin}:${DB_PASSWORD:-radar_secure_pass_2026}@postgres:5432/${DB_NAME:-radar_hub_db}
+      BACKUP_STORAGE_TYPE: ${BACKUP_STORAGE_TYPE:-LOCAL}
+      S3_BUCKET: ${S3_BUCKET:-radar-hub-backups}
+      S3_ACCESS_KEY: ${S3_ACCESS_KEY}
+      S3_SECRET_KEY: ${S3_SECRET_KEY}
+      BACKUP_ENCRYPTION_KEY: ${BACKUP_ENCRYPTION_KEY}
+  # ============================================================================
+  # 10. MONITORAMENTO EXTERNO DE DISPONIBILIDADE: Uptime Kuma
+  # ============================================================================
+  uptime_kuma:
+    image: louislam/uptime-kuma:1
+    container_name: radar_uptime_kuma
+    restart: unless-stopped
+    volumes:
+      - uptime_kuma_data:/app/data
+    ports:
+      - "${UPTIME_KUMA_PORT:-3002}:3001"
+    networks:
+      - radar_network
+
+  # ============================================================================
+  # 11. MENSAGERIA WHATSAPP: WAHA (WhatsApp HTTP API)
+  # ============================================================================
+  waha:
+    image: devlikeapro/waha:latest
+    container_name: radar_waha
+    restart: unless-stopped
+    environment:
+      WAHA_API_KEY: ${WAHA_API_KEY:-waha_secret_radar_2026}
+      WAHA_DASHBOARD_USERNAME: ${WAHA_USER:-admin}
+      WAHA_DASHBOARD_PASSWORD: ${WAHA_PASSWORD:-waha_admin_2026}
+      WHATSAPP_HOOK_URL: http://radar_app:3000/api/webhooks/waha
+      WHATSAPP_HOOK_EVENTS: message,message.upsert,session.status
+    ports:
+      - "${WAHA_PORT:-3005}:3000"
+    volumes:
+      - waha_data:/app/.sessions
+    healthcheck:
+      test: ["CMD-SHELL", "wget -q -O - http://127.0.0.1:3000/api/server/version || exit 1"]
+      interval: 15s
+      timeout: 5s
+      retries: 5
+      start_period: 20s
+    networks:
+      - radar_network
+
+volumes:
+  postgres_data:
+    driver: local
+  redis_data:
+    driver: local
+  n8n_data:
+    driver: local
+  prometheus_data:
+    driver: local
+  grafana_data:
+    driver: local
+  backup_data:
+    driver: local
+  uptime_kuma_data:
+    driver: local
+  waha_data:
+    driver: local
+
+networks:
+  radar_network:
+    driver: bridge

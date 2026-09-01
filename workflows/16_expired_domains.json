@@ -1,0 +1,101 @@
+{
+  "name": "[RADAR_HUB] - 16 Expired Domains & SEO Drop Radar",
+  "nodes": [
+    {
+      "parameters": {
+        "rule": {
+          "interval": [
+            {
+              "field": "hours",
+              "hoursInterval": 6
+            }
+          ]
+        }
+      },
+      "id": "trigger-domains",
+      "name": "PollDomainsTrigger",
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "typeVersion": 1.2,
+      "position": [160, 300]
+    },
+    {
+      "parameters": {
+        "url": "https://api.dominios-expirando.exemplo.com/v1/drops/br",
+        "options": {
+          "timeout": 12000
+        }
+      },
+      "id": "http-fetch-domains",
+      "name": "FetchDroplist",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [380, 300],
+      "onError": "continueRegularOutput"
+    },
+    {
+      "parameters": {
+        "jsCode": "const items = $input.all();\nconst results = [];\nfor (const item of items) {\n  const d = item.json;\n  const da = Number(d.domain_authority || 0);\n  const backlinks = Number(d.backlinks || 0);\n  const estValue = (d.appraisal_usd || 100) * 5.60;\n  let score = 55;\n  let priority = 'NORMAL';\n  if (da >= 30 || backlinks >= 1000) { score = 95; priority = 'CRITICAL_BUG'; }\n  else if (da >= 15 || backlinks >= 200) { score = 80; priority = 'HIGH'; }\n  if (score >= 70) {\n    results.push({\n      json: {\n        category: 'expired_domain',\n        title: `Domínio Expirando: ${d.domain || 'exemplo.com.br'}`,\n        description: `Autoridade DA: ${da} | Backlinks: ${backlinks} | Tráfego Residual. Valor est. de revenda: R$ ${estValue.toFixed(2)}`,\n        opportunity_price: 40.00,\n        original_price: estValue,\n        net_profit_estimate: Number((estValue - 40).toFixed(2)),\n        source_name: 'Registro.br Drop',\n        source_url: `https://registro.br/busca-dominio/?q=${d.domain || ''}`,\n        evaluation_score: score,\n        priority\n      }\n    });\n  }\n}\nreturn results;"
+      },
+      "id": "code-eval-domains",
+      "name": "EvaluateDomains",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [600, 300]
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "INSERT INTO radar_hub.opportunities (category, title, description, original_price, opportunity_price, net_profit_estimate, source_name, source_url, evaluation_score, priority) VALUES ($1::radar_hub.opportunity_type, $2, $3, $4, $5, $6, $7, $8, $9, $10::radar_hub.priority_level) ON CONFLICT DO NOTHING RETURNING id;"
+      },
+      "id": "db-persist-domains",
+      "name": "PersistDomains",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.5,
+      "position": [820, 300],
+      "onError": "continueRegularOutput"
+    }
+  ],
+  "connections": {
+    "PollDomainsTrigger": {
+      "main": [
+        [
+          {
+            "node": "FetchDroplist",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "FetchDroplist": {
+      "main": [
+        [
+          {
+            "node": "EvaluateDomains",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "EvaluateDomains": {
+      "main": [
+        [
+          {
+            "node": "PersistDomains",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "settings": {
+    "executionOrder": "v1"
+  },
+  "tags": [
+    {
+      "name": "RADAR_HUB"
+    }
+  ]
+}

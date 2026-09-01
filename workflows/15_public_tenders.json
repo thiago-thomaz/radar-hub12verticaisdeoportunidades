@@ -1,0 +1,101 @@
+{
+  "name": "[RADAR_HUB] - 15 Public Tenders & PNCP Monitor",
+  "nodes": [
+    {
+      "parameters": {
+        "rule": {
+          "interval": [
+            {
+              "field": "hours",
+              "hoursInterval": 3
+            }
+          ]
+        }
+      },
+      "id": "trigger-tenders",
+      "name": "PollTendersTrigger",
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "typeVersion": 1.2,
+      "position": [160, 300]
+    },
+    {
+      "parameters": {
+        "url": "https://pncp.gov.br/api/consulta/v1/contratacoes/publicacao",
+        "options": {
+          "timeout": 15000
+        }
+      },
+      "id": "http-fetch-tenders",
+      "name": "FetchPNCPTenders",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [380, 300],
+      "onError": "continueRegularOutput"
+    },
+    {
+      "parameters": {
+        "jsCode": "const items = $input.all();\nconst results = [];\nfor (const item of items) {\n  const t = item.json;\n  const val = Number(t.valorTotalEstimado || t.valor || 0);\n  if (val < 10000) continue;\n  const estimatedProfit = val * 0.25;\n  let score = 70;\n  let priority = 'NORMAL';\n  if (t.modalidadeNome === 'Dispensa de Licitação' || val >= 100000) { score = 90; priority = 'HIGH'; }\n  results.push({\n    json: {\n      category: 'public_tender',\n      title: `Licitação PNCP: ${t.objetoContratacao || t.titulo || 'Edital'}`,\n      description: `Órgão: ${t.orgaoEntidade?.razaoSocial || 'Órgão Público'} | Modalidade: ${t.modalidadeNome || 'Pregão'} | Lucro Est. (25%): R$ ${estimatedProfit.toLocaleString('pt-BR')}`,\n      opportunity_price: val,\n      original_price: val,\n      net_profit_estimate: Number(estimatedProfit.toFixed(2)),\n      location: t.unidadeOrgao?.municipioNome || 'Nacional',\n      source_name: 'PNCP / Comprasnet',\n      source_url: t.linkSistemaOrigem || 'https://pncp.gov.br',\n      evaluation_score: score,\n      priority\n    }\n  });\n}\nreturn results;"
+      },
+      "id": "code-eval-tenders",
+      "name": "EvaluateTenders",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [600, 300]
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "INSERT INTO radar_hub.opportunities (category, title, description, original_price, opportunity_price, net_profit_estimate, location, source_name, source_url, evaluation_score, priority) VALUES ($1::radar_hub.opportunity_type, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11::radar_hub.priority_level) ON CONFLICT DO NOTHING RETURNING id;"
+      },
+      "id": "db-persist-tenders",
+      "name": "PersistTenders",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.5,
+      "position": [820, 300],
+      "onError": "continueRegularOutput"
+    }
+  ],
+  "connections": {
+    "PollTendersTrigger": {
+      "main": [
+        [
+          {
+            "node": "FetchPNCPTenders",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "FetchPNCPTenders": {
+      "main": [
+        [
+          {
+            "node": "EvaluateTenders",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "EvaluateTenders": {
+      "main": [
+        [
+          {
+            "node": "PersistTenders",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "settings": {
+    "executionOrder": "v1"
+  },
+  "tags": [
+    {
+      "name": "RADAR_HUB"
+    }
+  ]
+}

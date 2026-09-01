@@ -1,0 +1,101 @@
+{
+  "name": "[RADAR_HUB] - 14 Bauru & Region Below Market Real Estate",
+  "nodes": [
+    {
+      "parameters": {
+        "rule": {
+          "interval": [
+            {
+              "field": "hours",
+              "hoursInterval": 2
+            }
+          ]
+        }
+      },
+      "id": "trigger-bauru-re",
+      "name": "PollBauruRealEstateTrigger",
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "typeVersion": 1.2,
+      "position": [160, 300]
+    },
+    {
+      "parameters": {
+        "url": "https://api.imoveis-bauru.exemplo.com/v1/listings/recent",
+        "options": {
+          "timeout": 15000
+        }
+      },
+      "id": "http-fetch-bauru",
+      "name": "FetchBauruListings",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [380, 300],
+      "onError": "continueRegularOutput"
+    },
+    {
+      "parameters": {
+        "jsCode": "const items = $input.all();\nconst results = [];\nconst benchmarks = { 'Jardim America': 6800, 'Altos da Cidade': 5400, 'Vila Aviacao': 8200, 'Vila Universitaria': 5100, 'Parque das Nacoes': 3200, 'Nucleo Mary Dota': 2700, 'Centro': 3900, 'Geral': 4200 };\nfor (const item of items) {\n  const im = item.json;\n  const price = Number(im.price || 0);\n  const area = Number(im.area_m2 || 0);\n  if (price <= 0 || area <= 0) continue;\n  const calculatedM2 = price / area;\n  const neighborhood = im.neighborhood || 'Geral';\n  const bench = benchmarks[neighborhood] || benchmarks['Geral'];\n  const marketEst = bench * area;\n  const discount = ((marketEst - price) / marketEst) * 100;\n  const netProfit = marketEst - price;\n  let score = 50;\n  let priority = 'NORMAL';\n  if (discount >= 40) { score = 98; priority = 'CRITICAL_BUG'; }\n  else if (discount >= 25) { score = 85; priority = 'HIGH'; }\n  else if (discount >= 15) { score = 70; }\n  if (score >= 70) {\n    results.push({\n      json: {\n        category: 'real_estate_local',\n        title: `${im.title || 'Imóvel'} em ${neighborhood} (Bauru)`,\n        description: `R$ ${calculatedM2.toFixed(0)}/m² vs Méd. Região R$ ${bench}/m² (${discount.toFixed(1)}% de deságio)`,\n        original_price: marketEst,\n        opportunity_price: price,\n        discount_percentage: Number(discount.toFixed(2)),\n        net_profit_estimate: Number(netProfit.toFixed(2)),\n        fipe_or_market_ref: marketEst,\n        location: `Bauru - SP (${neighborhood})`,\n        source_name: im.source || 'Radar Imobiliário Bauru',\n        source_url: im.url || 'https://exemplo.com',\n        evaluation_score: score,\n        priority\n      }\n    });\n  }\n}\nreturn results;"
+      },
+      "id": "code-eval-bauru",
+      "name": "EvaluateBauruM2",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [600, 300]
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "INSERT INTO radar_hub.opportunities (category, title, description, original_price, opportunity_price, discount_percentage, net_profit_estimate, fipe_or_market_ref, location, source_name, source_url, evaluation_score, priority) VALUES ($1::radar_hub.opportunity_type, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13::radar_hub.priority_level) ON CONFLICT DO NOTHING RETURNING id;"
+      },
+      "id": "db-persist-bauru",
+      "name": "PersistBauruListings",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.5,
+      "position": [820, 300],
+      "onError": "continueRegularOutput"
+    }
+  ],
+  "connections": {
+    "PollBauruRealEstateTrigger": {
+      "main": [
+        [
+          {
+            "node": "FetchBauruListings",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "FetchBauruListings": {
+      "main": [
+        [
+          {
+            "node": "EvaluateBauruM2",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "EvaluateBauruM2": {
+      "main": [
+        [
+          {
+            "node": "PersistBauruListings",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "settings": {
+    "executionOrder": "v1"
+  },
+  "tags": [
+    {
+      "name": "RADAR_HUB"
+    }
+  ]
+}

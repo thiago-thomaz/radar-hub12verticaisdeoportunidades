@@ -1,0 +1,110 @@
+{
+  "name": "[RADAR_HUB] - 10 VIP Monetization & Telegram Access Bot",
+  "nodes": [
+    {
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "vip-subscription-webhook",
+        "options": {}
+      },
+      "id": "webhook-payment",
+      "name": "Webhook Payment Confirmed",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2,
+      "position": [160, 280],
+      "webhookId": "radar-vip-sub-webhook"
+    },
+    {
+      "parameters": {
+        "jsCode": "// Normalização do Pagamento e Cálculo de Expiração\nconst body = $input.item.json.body || {};\nconst email = (body.email || body.customer_email || 'usuario@exemplo.com').toLowerCase().trim();\nconst name = body.name || body.customer_name || 'Assinante VIP';\nconst plan = body.plan || 'VIP_MONTHLY';\n\nconst days = plan === 'VIP_ANNUAL' ? 365 : (plan === 'LIFETIME' ? 3650 : 30);\nconst expiresAt = new Date();\nexpiresAt.setDate(expiresAt.getDate() + days);\n\nreturn [{\n  json: {\n    email,\n    name,\n    plan,\n    expiresAt: expiresAt.toISOString(),\n    status: 'ACTIVE'\n  }\n}];"
+      },
+      "id": "code-process-sub",
+      "name": "Process Subscription Details",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [380, 280]
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "INSERT INTO radar_hub.subscribers (\n  customer_email,\n  customer_name,\n  plan_tier,\n  subscription_status,\n  expires_at\n) VALUES (\n  $1,\n  $2,\n  $3,\n  $4,\n  $5::timestamptz\n) ON CONFLICT (customer_email) DO UPDATE SET\n  subscription_status = 'ACTIVE',\n  expires_at = EXCLUDED.expires_at,\n  updated_at = NOW()\nRETURNING id;"
+      },
+      "id": "db-upsert-subscriber",
+      "name": "Upsert in radar_hub.subscribers",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.5,
+      "position": [600, 280],
+      "continueOnFail": true,
+      "credentials": {
+        "postgres": {
+          "id": "CREDENTIAL_RADAR_POSTGRES",
+          "name": "Postgres (radar_hub isolated)"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "chatId": "=@canal_radar_hub_admin",
+        "text": "🎉 **[NOVA ASSINATURA VIP ATIVA]**\n\n👤 **Cliente:** {{ $json.name }} ({{ $json.email }})\n💎 **Plano:** {{ $json.plan }}\n📅 **Válido até:** {{ $json.expiresAt }}",
+        "additionalFields": {
+          "parse_mode": "Markdown"
+        }
+      },
+      "id": "tg-notify-admin-sub",
+      "name": "Notify Admin New VIP",
+      "type": "n8n-nodes-base.telegram",
+      "typeVersion": 1.2,
+      "position": [820, 280],
+      "continueOnFail": true,
+      "credentials": {
+        "telegramApi": {
+          "id": "CREDENTIAL_RADAR_TELEGRAM",
+          "name": "Telegram Bot (RADAR_HUB)"
+        }
+      }
+    }
+  ],
+  "connections": {
+    "Webhook Payment Confirmed": {
+      "main": [
+        [
+          {
+            "node": "Process Subscription Details",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Process Subscription Details": {
+      "main": [
+        [
+          {
+            "node": "Upsert in radar_hub.subscribers",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Upsert in radar_hub.subscribers": {
+      "main": [
+        [
+          {
+            "node": "Notify Admin New VIP",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "settings": {
+    "executionOrder": "v1"
+  },
+  "tags": [
+    {
+      "name": "RADAR_HUB"
+    }
+  ]
+}

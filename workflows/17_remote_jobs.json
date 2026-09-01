@@ -1,0 +1,101 @@
+{
+  "name": "[RADAR_HUB] - 17 Global Remote Jobs & USD Salary Radar",
+  "nodes": [
+    {
+      "parameters": {
+        "rule": {
+          "interval": [
+            {
+              "field": "hours",
+              "hoursInterval": 2
+            }
+          ]
+        }
+      },
+      "id": "trigger-jobs",
+      "name": "PollJobsTrigger",
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "typeVersion": 1.2,
+      "position": [160, 300]
+    },
+    {
+      "parameters": {
+        "url": "https://remoteok.com/api",
+        "options": {
+          "timeout": 15000
+        }
+      },
+      "id": "http-fetch-jobs",
+      "name": "FetchRemoteJobs",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [380, 300],
+      "onError": "continueRegularOutput"
+    },
+    {
+      "parameters": {
+        "jsCode": "const items = $input.all();\nconst results = [];\nfor (const item of items) {\n  const j = item.json;\n  if (!j.position) continue;\n  const salaryUsd = Number(j.salary_max || j.salary_min || 80000);\n  const monthlyBrl = (salaryUsd / 12) * 5.60;\n  let score = 60;\n  let priority = 'NORMAL';\n  if (monthlyBrl >= 35000) { score = 98; priority = 'CRITICAL_BUG'; }\n  else if (monthlyBrl >= 20000) { score = 85; priority = 'HIGH'; }\n  results.push({\n    json: {\n      category: 'remote_job',\n      title: `${j.position} - ${j.company || 'Global Remote'}`,\n      description: `Salário: US$ ${salaryUsd.toLocaleString()}/ano (~R$ ${monthlyBrl.toLocaleString('pt-BR', { maximumFractionDigits: 0 })}/mês) | Tags: ${(j.tags || []).slice(0, 4).join(', ')}`,\n      opportunity_price: Number(monthlyBrl.toFixed(2)),\n      original_price: Number(monthlyBrl.toFixed(2)),\n      net_profit_estimate: Number(monthlyBrl.toFixed(2)),\n      location: '100% Remoto Global',\n      source_name: 'RemoteOK / LinkedIn',\n      source_url: j.url || 'https://remoteok.com',\n      evaluation_score: score,\n      priority\n    }\n  });\n}\nreturn results.slice(0, 15);"
+      },
+      "id": "code-eval-jobs",
+      "name": "EvaluateJobs",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [600, 300]
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "INSERT INTO radar_hub.opportunities (category, title, description, original_price, opportunity_price, net_profit_estimate, location, source_name, source_url, evaluation_score, priority) VALUES ($1::radar_hub.opportunity_type, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11::radar_hub.priority_level) ON CONFLICT DO NOTHING RETURNING id;"
+      },
+      "id": "db-persist-jobs",
+      "name": "PersistJobs",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.5,
+      "position": [820, 300],
+      "onError": "continueRegularOutput"
+    }
+  ],
+  "connections": {
+    "PollJobsTrigger": {
+      "main": [
+        [
+          {
+            "node": "FetchRemoteJobs",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "FetchRemoteJobs": {
+      "main": [
+        [
+          {
+            "node": "EvaluateJobs",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "EvaluateJobs": {
+      "main": [
+        [
+          {
+            "node": "PersistJobs",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "settings": {
+    "executionOrder": "v1"
+  },
+  "tags": [
+    {
+      "name": "RADAR_HUB"
+    }
+  ]
+}

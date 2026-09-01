@@ -1,0 +1,130 @@
+{
+  "name": "[RADAR_HUB] - 02 Price Bugs & Digit Errors Detector",
+  "nodes": [
+    {
+      "parameters": {
+        "rule": {
+          "interval": [
+            {
+              "field": "minutes",
+              "minutesInterval": 5
+            }
+          ]
+        }
+      },
+      "id": "schedule-bugs",
+      "name": "Radar Fast Poll (5m)",
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "typeVersion": 1.2,
+      "position": [180, 280]
+    },
+    {
+      "parameters": {
+        "url": "https://api.promocoes.exemplo.com/v1/deals/realtime",
+        "options": {
+          "timeout": 10000
+        }
+      },
+      "id": "http-fetch-deals",
+      "name": "Fetch Live Deals Feed",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [380, 280],
+      "continueOnFail": true
+    },
+    {
+      "parameters": {
+        "amount": 2,
+        "unit": "seconds"
+      },
+      "id": "wait-throttle-bugs",
+      "name": "Rate Limit Guard (2s)",
+      "type": "n8n-nodes-base.wait",
+      "typeVersion": 1.1,
+      "position": [580, 280],
+      "webhookId": "radar-bugs-throttle"
+    },
+    {
+      "parameters": {
+        "jsCode": "// Normalização e Motor de Detecção de Bugs\nconst items = $input.all();\nconst results = [];\n\nfor (const item of items) {\n  const data = item.json;\n  const title = data.title || 'Produto em Promoção';\n  const currentPrice = Number(data.price || data.current_price || 0);\n  const originalPrice = Number(data.original_price || data.regular_price || 0);\n  \n  if (currentPrice <= 0 || originalPrice <= 0) continue;\n  \n  const discount = ((originalPrice - currentPrice) / originalPrice) * 100;\n  const ratio = currentPrice / originalPrice;\n  \n  // Heurística de Bug de Preço e Erro de Dígito\n  let isBug = false;\n  let priority = 'NORMAL';\n  let score = Math.floor(discount);\n  \n  if (discount >= 80 || ratio <= 0.15) {\n    isBug = true;\n    priority = 'CRITICAL_BUG';\n    score = 98;\n  } else if (discount >= 60) {\n    isBug = true;\n    priority = 'HIGH';\n    score = 85;\n  }\n  \n  if (isBug || score >= 60) {\n    results.push({\n      json: {\n        category: 'price_bug',\n        title: title,\n        description: `Queda brusca de ${discount.toFixed(1)}% OFF! De R$ ${originalPrice.toFixed(2)} por R$ ${currentPrice.toFixed(2)}`,\n        original_price: originalPrice,\n        opportunity_price: currentPrice,\n        discount_percentage: Number(discount.toFixed(2)),\n        net_profit_estimate: Number((originalPrice - currentPrice).toFixed(2)),\n        fipe_or_market_ref: originalPrice,\n        source_name: data.source || 'E-Commerce Radar',\n        source_url: data.url || 'https://exemplo.com',\n        affiliate_url: data.affiliate_url || data.url,\n        evaluation_score: score,\n        priority: priority,\n        raw_metadata: {\n          isBug,\n          ratio: Number(ratio.toFixed(3))\n        }\n      }\n    });\n  }\n}\n\nreturn results;"
+      },
+      "id": "code-bug-evaluator",
+      "name": "Evaluate Bug & Discount",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [780, 280]
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "INSERT INTO radar_hub.opportunities (\n  category,\n  title,\n  description,\n  original_price,\n  opportunity_price,\n  discount_percentage,\n  net_profit_estimate,\n  fipe_or_market_ref,\n  source_name,\n  source_url,\n  affiliate_url,\n  evaluation_score,\n  priority,\n  raw_metadata\n) VALUES (\n  $1::radar_hub.opportunity_type,\n  $2,\n  $3,\n  $4,\n  $5,\n  $6,\n  $7,\n  $8,\n  $9,\n  $10,\n  $11,\n  $12,\n  $13::radar_hub.priority_level,\n  $14::jsonb\n) ON CONFLICT DO NOTHING RETURNING id;"
+      },
+      "id": "db-insert-bug",
+      "name": "Persist in radar_hub.opportunities",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.5,
+      "position": [980, 280],
+      "continueOnFail": true,
+      "credentials": {
+        "postgres": {
+          "id": "CREDENTIAL_RADAR_POSTGRES",
+          "name": "Postgres (radar_hub isolated)"
+        }
+      }
+    }
+  ],
+  "connections": {
+    "Radar Fast Poll (5m)": {
+      "main": [
+        [
+          {
+            "node": "Fetch Live Deals Feed",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Fetch Live Deals Feed": {
+      "main": [
+        [
+          {
+            "node": "Rate Limit Guard (2s)",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Rate Limit Guard (2s)": {
+      "main": [
+        [
+          {
+            "node": "Evaluate Bug & Discount",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Evaluate Bug & Discount": {
+      "main": [
+        [
+          {
+            "node": "Persist in radar_hub.opportunities",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "settings": {
+    "executionOrder": "v1"
+  },
+  "tags": [
+    {
+      "name": "RADAR_HUB"
+    }
+  ]
+}

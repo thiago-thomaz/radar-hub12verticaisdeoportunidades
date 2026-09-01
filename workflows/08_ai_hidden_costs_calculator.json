@@ -1,0 +1,111 @@
+{
+  "name": "[RADAR_HUB] - 08 Predictive Liquidity & Hidden Costs Enricher",
+  "nodes": [
+    {
+      "parameters": {
+        "rule": {
+          "interval": [
+            {
+              "field": "minutes",
+              "minutesInterval": 15
+            }
+          ]
+        }
+      },
+      "id": "schedule-enricher",
+      "name": "Trigger Enrichment (15m)",
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "typeVersion": 1.2,
+      "position": [160, 300]
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "SELECT * FROM radar_hub.opportunities WHERE status = 'ACTIVE' AND (net_profit_estimate IS NULL OR evaluation_score <= 50) LIMIT 20;"
+      },
+      "id": "db-query-pending",
+      "name": "Fetch Opportunities to Enrich",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.5,
+      "position": [360, 300],
+      "continueOnFail": true,
+      "credentials": {
+        "postgres": {
+          "id": "CREDENTIAL_RADAR_POSTGRES",
+          "name": "Postgres (radar_hub isolated)"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "// [RADAR_HUB] - Motor Avançado de Cálculo de Margem e Custos Ocultos\nconst items = $input.all();\nreturn items.map(item => {\n  let data = item.json;\n  let netProfit = 0;\n  let evaluationScore = data.evaluation_score || 50;\n\n  if (data.category === 'car_auction') {\n    const lance = parseFloat(data.opportunity_price) || 0;\n    const fipe = parseFloat(data.fipe_or_market_ref) || 0;\n    const taxaLeiloeiro = lance * 0.05;\n    const taxasPatioGuincho = 900.00;\n    const custoTotalAquisicao = lance + taxaLeiloeiro + taxasPatioGuincho;\n    netProfit = fipe - custoTotalAquisicao;\n    \n    // Recalcula score baseado no deságio real pós-taxas\n    const desagioReal = (fipe - custoTotalAquisicao) / fipe;\n    if (desagioReal > 0.40) evaluationScore = 95;\n    else if (desagioReal > 0.25) evaluationScore = 80;\n    else evaluationScore = 50;\n\n  } else if (data.category === 'price_bug') {\n    const precoAtual = parseFloat(data.opportunity_price) || 0;\n    const precoMedio = parseFloat(data.original_price) || 1;\n    const desconto = 1 - (precoAtual / precoMedio);\n    netProfit = precoMedio - precoAtual;\n    \n    if (desconto >= 0.60) evaluationScore = 98;\n    else if (desconto >= 0.40) evaluationScore = 85;\n  }\n\n  data.net_profit_estimate = parseFloat(netProfit.toFixed(2));\n  data.evaluation_score = evaluationScore;\n  \n  return { json: data };\n});"
+      },
+      "id": "code-calc-hidden-costs",
+      "name": "Calculate Hidden Costs & Margins",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [580, 300]
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "UPDATE radar_hub.opportunities SET\n  net_profit_estimate = $1,\n  evaluation_score = $2,\n  updated_at = NOW()\nWHERE id = $3::uuid;"
+      },
+      "id": "db-update-enriched",
+      "name": "Update in radar_hub.opportunities",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.5,
+      "position": [800, 300],
+      "continueOnFail": true,
+      "credentials": {
+        "postgres": {
+          "id": "CREDENTIAL_RADAR_POSTGRES",
+          "name": "Postgres (radar_hub isolated)"
+        }
+      }
+    }
+  ],
+  "connections": {
+    "Trigger Enrichment (15m)": {
+      "main": [
+        [
+          {
+            "node": "Fetch Opportunities to Enrich",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Fetch Opportunities to Enrich": {
+      "main": [
+        [
+          {
+            "node": "Calculate Hidden Costs & Margins",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Calculate Hidden Costs & Margins": {
+      "main": [
+        [
+          {
+            "node": "Update in radar_hub.opportunities",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "settings": {
+    "executionOrder": "v1"
+  },
+  "tags": [
+    {
+      "name": "RADAR_HUB"
+    }
+  ]
+}

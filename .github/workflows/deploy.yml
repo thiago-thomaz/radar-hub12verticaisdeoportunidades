@@ -1,0 +1,119 @@
+name: RADAR_HUB CI/CD Pipeline
+
+on:
+  push:
+    branches: [ main ]
+  pull_request:
+    branches: [ main ]
+  workflow_dispatch:
+
+concurrency:
+  group: radar-hub-deployment
+  cancel-in-progress: false
+
+jobs:
+  # ============================================================================
+  # 1. ETAPA DE CI: COMPILAÇÃO, TESTES DE MOTORES, BANCO, E2E E SRE
+  # ============================================================================
+  ci-test:
+    name: 🧪 CI // Build & Suíte Completa de Testes
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: 📥 Checkout do Repositório
+        uses: actions/checkout@v4
+
+      - name: 🟢 Configurar Node.js 20
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: 'npm'
+
+      - name: 📦 Instalar Dependências
+        run: npm ci || npm install
+
+      - name: 🔨 Compilar TypeScript (Type Check)
+        run: npm run build
+
+      - name: ⚡ Executar Smoke Test dos Motores
+        run: npm run test:engines
+
+      - name: 🚀 Executar Testes E2E (12 Verticais & Scoring)
+        run: npm run test:e2e
+
+      - name: 📡 Executar Testes de Live WebSockets & Bot Telegram
+        run: npm run test:stream
+
+      - name: 📊 Executar Testes de Observabilidade (OpenMetrics & Grafana)
+        run: npm run test:monitoring
+
+      - name: 🐘 Executar Testes de Integração PostgreSQL & Disaster Recovery
+        run: npm run test:db
+
+      - name: 🚀 Executar Testes dos Scripts de Deploy & Hardening
+        run: npm run test:deploy
+
+      - name: ⚡ Executar Testes de Performance & k6
+        run: npm run test:performance
+
+      - name: 🧠 Executar Testes de PWA & IA Preditiva
+        run: npm run test:pwa-ai
+
+      - name: ⚖️ Executar Testes de LegalTech & Multi-Gateway
+        run: npm run test:legal-pay
+
+      - name: 🌐 Executar Testes de Recursos Avançados & Cross-Border
+        run: npm run test:advanced
+
+      - name: 💬 Executar Testes de WAHA WhatsApp & RAG AI
+        run: npm run test:waha
+
+      - name: 🎙️ Executar Testes de Áudio Whisper & Broadcast Segmentado
+        run: npm run test:voice-broadcast
+
+      - name: 📑 Executar Testes de Dossiês PDF & Social Media
+        run: npm run test:pdf-social
+
+  # ============================================================================
+  # 2. ETAPA DE CD: DEPLOY AUTOMATIZADO NA VPS DE PRODUÇÃO VIA SSH
+  # ============================================================================
+  cd-deploy:
+    name: 🚀 CD // Deploy Contínuo em Produção
+    needs: ci-test
+    if: github.ref == 'refs/heads/main' && github.event_name == 'push'
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: 📥 Checkout do Repositório
+        uses: actions/checkout@v4
+
+      - name: 🔐 Executar Deploy Remoto via SSH na VPS
+        uses: appleboy/ssh-action@v1.0.3
+        if: env.SSH_HOST != ''
+        env:
+          SSH_HOST: ${{ secrets.SSH_HOST }}
+          SSH_USER: ${{ secrets.SSH_USER }}
+          SSH_KEY: ${{ secrets.SSH_PRIVATE_KEY }}
+          SSH_PORT: ${{ secrets.SSH_PORT || '22' }}
+        with:
+          host: ${{ secrets.SSH_HOST }}
+          username: ${{ secrets.SSH_USER }}
+          key: ${{ secrets.SSH_PRIVATE_KEY }}
+          port: ${{ secrets.SSH_PORT || '22' }}
+          script_stop: true
+          envs: TELEGRAM_BOT_TOKEN,TELEGRAM_VIP_CHANNEL_ID
+          script: |
+            set -e
+            echo "Iniciando deploy na VPS..."
+            cd /opt/radar-hub || (mkdir -p /opt/radar-hub && cd /opt/radar-hub)
+            bash deploy/deploy.sh
+
+      - name: 📢 Notificar Sucesso no Telegram
+        if: success()
+        run: |
+          if [ -n "${{ secrets.TELEGRAM_BOT_TOKEN }}" ] && [ -n "${{ secrets.TELEGRAM_VIP_CHANNEL_ID }}" ]; then
+            curl -s -X POST "https://api.telegram.org/bot${{ secrets.TELEGRAM_BOT_TOKEN }}/sendMessage" \
+              -d "chat_id=${{{ secrets.TELEGRAM_VIP_CHANNEL_ID }}}" \
+              -d "text=🚀 <b>[CI/CD] DEPLOY EM PRODUÇÃO REALIZADO COM SUCESSO!</b>%0ACommit: <code>${{ github.sha }}</code>%0AAutor: ${{ github.actor }}" \
+              -d "parse_mode=HTML" || true
+          fi

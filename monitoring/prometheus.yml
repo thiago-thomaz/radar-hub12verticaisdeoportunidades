@@ -1,0 +1,47 @@
+global:
+  scrape_interval: 5s
+  evaluation_interval: 5s
+  scrape_timeout: 4s
+
+scrape_configs:
+  # ============================================================================
+  # 1. RADAR_HUB Application Engine & Cockpit API
+  # ============================================================================
+  - job_name: 'radar_app'
+    metrics_path: '/metrics'
+    static_configs:
+      - targets: ['radar_app:3000', 'localhost:3000']
+        labels:
+          environment: 'production'
+          service: 'radar_hub_engine'
+          layer: 'backend_scoring'
+
+  # ============================================================================
+  # 2. PostgreSQL / TimescaleDB Exporter
+  # ============================================================================
+  - job_name: 'postgresql'
+    static_configs:
+      - targets: ['postgres_exporter:9187']
+        labels:
+          environment: 'production'
+          service: 'timescaledb_primary'
+          database: 'radar_hub_db'
+
+  # ============================================================================
+  # 3. Redis Cache & Queue Exporter
+  # ============================================================================
+  - job_name: 'redis'
+    static_configs:
+      - targets: ['redis_exporter:9121']
+        labels:
+          environment: 'production'
+          service: 'redis_cache_queue'
+
+  # ============================================================================
+  # 4. Prometheus Self-Monitoring
+  # ============================================================================
+  - job_name: 'prometheus'
+    static_configs:
+      - targets: ['localhost:9090']
+        labels:
+          service: 'prometheus_monitoring'

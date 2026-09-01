@@ -1,0 +1,45 @@
+{
+  "name": "radar-hub",
+  "version": "1.0.0",
+  "description": "RADAR_HUB - Radar Supremo de Arbitragem & Oportunidades (18 Pipelines)",
+  "main": "engine/index.ts",
+  "scripts": {
+    "dev": "tsx watch server.ts",
+    "start": "tsx server.ts",
+    "bootstrap": "tsx scripts/bootstrap.ts",
+    "test:engines": "tsx scripts/bootstrap.ts --smoke-only",
+    "test:e2e": "tsx scripts/test_pipeline_e2e.ts",
+    "test:stream": "tsx scripts/test_live_stream.ts",
+    "test:monitoring": "tsx scripts/test_monitoring_stack.ts",
+    "test:db": "tsx scripts/test_postgres_integration.ts",
+    "test:deploy": "tsx scripts/test_deploy_scripts.ts",
+    "test:performance": "tsx scripts/test_performance_suite.ts",
+    "test:pwa-ai": "tsx scripts/test_pwa_and_ai.ts",
+    "test:legal-pay": "tsx scripts/test_legal_and_payments.ts",
+    "test:advanced": "tsx scripts/test_advanced_features.ts",
+    "test:waha": "tsx scripts/test_waha_and_rag.ts",
+    "test:voice-broadcast": "tsx scripts/test_audio_and_broadcast.ts",
+    "test:pdf-social": "tsx scripts/test_pdf_and_social.ts",
+    "db:backup": "tsx scripts/backup/db_backup.ts",
+    "db:restore": "tsx scripts/backup/db_restore.ts",
+    "audit:production": "tsx scripts/audit_production_readiness.ts",
+    "build": "tsc"
+  },
+  "dependencies": {
+    "cors": "^2.8.5",
+    "dotenv": "^16.4.5",
+    "express": "^4.19.2",
+    "pg": "^8.12.0",
+    "redis": "^4.6.14",
+    "ws": "^8.17.1"
+  },
+  "devDependencies": {
+    "@types/cors": "^2.8.17",
+    "@types/express": "^4.17.21",
+    "@types/node": "^20.14.9",
+    "@types/pg": "^8.11.6",
+    "@types/ws": "^8.5.10",
+    "tsx": "^4.16.2",
+    "typescript": "^5.5.3"
+  }
+}

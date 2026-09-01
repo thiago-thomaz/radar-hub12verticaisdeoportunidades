@@ -1,0 +1,50 @@
+{
+  "name": "RADAR_HUB — Cockpit Supremo de Arbitragem",
+  "short_name": "RADAR_HUB",
+  "description": "Radar de Arbitragem em Tempo Real, Bugs de Preço, Leilões e Oportunidades",
+  "start_url": "/dashboard/index.html",
+  "scope": "/dashboard/",
+  "display": "standalone",
+  "orientation": "any",
+  "theme_color": "#080c14",
+  "background_color": "#080c14",
+  "lang": "pt-BR",
+  "categories": ["finance", "business", "productivity", "utilities"],
+  "icons": [
+    {
+      "src": "icons/icon-192.png",
+      "sizes": "192x192",
+      "type": "image/png",
+      "purpose": "any maskable"
+    },
+    {
+      "src": "icons/icon-512.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "any maskable"
+    }
+  ],
+  "shortcuts": [
+    {
+      "name": "Bugs de Preço",
+      "short_name": "Bugs",
+      "description": "Monitoramento de erros de preço e descontos >80%",
+      "url": "/dashboard/index.html#bugs",
+      "icons": [{ "src": "icons/icon-192.png", "sizes": "192x192" }]
+    },
+    {
+      "name": "Leilões FIPE",
+      "short_name": "Leilões",
+      "description": "Leilões de veículos com margem sobre a Tabela FIPE",
+      "url": "/dashboard/index.html#auctions",
+      "icons": [{ "src": "icons/icon-192.png", "sizes": "192x192" }]
+    },
+    {
+      "name": "Imóveis Bauru",
+      "short_name": "Imóveis",
+      "description": "Arbitragem de imóveis por m² em Bauru e Região",
+      "url": "/dashboard/index.html#bauru",
+      "icons": [{ "src": "icons/icon-192.png", "sizes": "192x192" }]
+    }
+  ]
+}

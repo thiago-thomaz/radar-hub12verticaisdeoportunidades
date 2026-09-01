@@ -1,0 +1,107 @@
+{
+  "name": "[RADAR_HUB] - 01 Master Pipeline Orchestrator",
+  "nodes": [
+    {
+      "parameters": {
+        "rule": {
+          "interval": [
+            {
+              "field": "minutes",
+              "minutesInterval": 15
+            }
+          ]
+        }
+      },
+      "id": "schedule-trigger-1",
+      "name": "Cron Ingestão Periódica (15m)",
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "typeVersion": 1.2,
+      "position": [200, 300]
+    },
+    {
+      "parameters": {
+        "jsCode": "return [{\n  json: {\n    timestamp: new Date().toISOString(),\n    runId: 'RUN_' + Date.now(),\n    status: 'STARTED'\n  }\n}];"
+      },
+      "id": "code-init-1",
+      "name": "Init Execution Context",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [420, 300]
+    },
+    {
+      "parameters": {
+        "amount": 1.5,
+        "unit": "seconds"
+      },
+      "id": "wait-throttle-1",
+      "name": "VPS Throttle Guard (1.5s)",
+      "type": "n8n-nodes-base.wait",
+      "typeVersion": 1.1,
+      "position": [640, 300],
+      "webhookId": "radar-hub-throttle-guard"
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "INSERT INTO radar_hub.execution_logs (pipeline_name, status, executed_at) VALUES ('[RADAR_HUB] Master Pipeline', 'RUNNING', NOW()) RETURNING id;"
+      },
+      "id": "postgres-log-start",
+      "name": "Log Start in radar_hub",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.5,
+      "position": [860, 300],
+      "continueOnFail": true,
+      "credentials": {
+        "postgres": {
+          "id": "CREDENTIAL_RADAR_POSTGRES",
+          "name": "Postgres (radar_hub isolated)"
+        }
+      }
+    }
+  ],
+  "connections": {
+    "Cron Ingestão Periódica (15m)": {
+      "main": [
+        [
+          {
+            "node": "Init Execution Context",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Init Execution Context": {
+      "main": [
+        [
+          {
+            "node": "VPS Throttle Guard (1.5s)",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "VPS Throttle Guard (1.5s)": {
+      "main": [
+        [
+          {
+            "node": "Log Start in radar_hub",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "settings": {
+    "executionOrder": "v1",
+    "saveManualExecutions": true,
+    "callerPolicy": "workflowsFromSameOwner"
+  },
+  "tags": [
+    {
+      "name": "RADAR_HUB"
+    }
+  ]
+}

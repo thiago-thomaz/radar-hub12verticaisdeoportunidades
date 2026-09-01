@@ -1,0 +1,101 @@
+{
+  "name": "[RADAR_HUB] - 11 Active Coupons & Quick Promo Radar",
+  "nodes": [
+    {
+      "parameters": {
+        "rule": {
+          "interval": [
+            {
+              "field": "minutes",
+              "minutesInterval": 15
+            }
+          ]
+        }
+      },
+      "id": "trigger-coupons",
+      "name": "PollCouponsTrigger",
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "typeVersion": 1.2,
+      "position": [160, 300]
+    },
+    {
+      "parameters": {
+        "url": "https://api.cupons.exemplo.com/v1/verified",
+        "options": {
+          "timeout": 10000
+        }
+      },
+      "id": "http-fetch-coupons",
+      "name": "FetchLiveCoupons",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [380, 300],
+      "onError": "continueRegularOutput"
+    },
+    {
+      "parameters": {
+        "jsCode": "const items = $input.all();\nconst results = [];\nfor (const item of items) {\n  const c = item.json;\n  const discountPercent = Number(c.discount_percent || 0);\n  const discountValue = Number(c.discount_value || 0);\n  let score = 65;\n  let priority = 'NORMAL';\n  if (discountPercent >= 50 || discountValue >= 100) { score = 95; priority = 'CRITICAL_BUG'; }\n  else if (discountPercent >= 30 || discountValue >= 50) { score = 80; priority = 'HIGH'; }\n  results.push({\n    json: {\n      category: 'coupon_deal',\n      title: `Cupom ${c.code || 'OFERTA'}: ${discountPercent ? `${discountPercent}% OFF` : `R$ ${discountValue} OFF`} na ${c.store || 'Loja'}`,\n      description: c.description || 'Cupom testado e validado em tempo real.',\n      opportunity_price: discountValue > 0 ? discountValue : 0,\n      original_price: 100.00,\n      discount_percentage: discountPercent,\n      source_name: c.store || 'Agregador de Cupons',\n      source_url: c.url || 'https://exemplo.com',\n      affiliate_url: c.affiliate_url || c.url,\n      evaluation_score: score,\n      priority\n    }\n  });\n}\nreturn results;"
+      },
+      "id": "code-eval-coupons",
+      "name": "EvaluateCoupons",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [600, 300]
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "INSERT INTO radar_hub.opportunities (category, title, description, original_price, opportunity_price, discount_percentage, source_name, source_url, affiliate_url, evaluation_score, priority) VALUES ($1::radar_hub.opportunity_type, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11::radar_hub.priority_level) ON CONFLICT DO NOTHING RETURNING id;"
+      },
+      "id": "db-persist-coupons",
+      "name": "PersistCoupons",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.5,
+      "position": [820, 300],
+      "onError": "continueRegularOutput"
+    }
+  ],
+  "connections": {
+    "PollCouponsTrigger": {
+      "main": [
+        [
+          {
+            "node": "FetchLiveCoupons",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "FetchLiveCoupons": {
+      "main": [
+        [
+          {
+            "node": "EvaluateCoupons",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "EvaluateCoupons": {
+      "main": [
+        [
+          {
+            "node": "PersistCoupons",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "settings": {
+    "executionOrder": "v1"
+  },
+  "tags": [
+    {
+      "name": "RADAR_HUB"
+    }
+  ]
+}

@@ -1,0 +1,130 @@
+{
+  "name": "[RADAR_HUB] - 04 Miles & Airline Bonus Arbitrage",
+  "nodes": [
+    {
+      "parameters": {
+        "rule": {
+          "interval": [
+            {
+              "field": "hours",
+              "hoursInterval": 2
+            }
+          ]
+        }
+      },
+      "id": "schedule-miles",
+      "name": "Miles Promo Poll (2h)",
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "typeVersion": 1.2,
+      "position": [160, 300]
+    },
+    {
+      "parameters": {
+        "url": "https://api.milhas.exemplo.com/v1/promos/active",
+        "options": {
+          "timeout": 12000
+        }
+      },
+      "id": "http-fetch-miles",
+      "name": "Fetch Bonus Transfers Feed",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [360, 300],
+      "continueOnFail": true
+    },
+    {
+      "parameters": {
+        "amount": 2,
+        "unit": "seconds"
+      },
+      "id": "wait-throttle-miles",
+      "name": "VPS Throttle Guard (2s)",
+      "type": "n8n-nodes-base.wait",
+      "typeVersion": 1.1,
+      "position": [560, 300],
+      "webhookId": "radar-miles-throttle"
+    },
+    {
+      "parameters": {
+        "jsCode": "// Normalização e Cálculo de Custo por Milheiro (CPM) e Arbitragem\nconst items = $input.all();\nconst results = [];\n\nfor (const item of items) {\n  const promo = item.json;\n  const bonus = Number(promo.bonus_percentage || 0);\n  const sourceProg = promo.source_program || 'Livelo';\n  const targetProg = promo.target_program || 'Latam Pass';\n  \n  if (bonus < 30) continue; // Desprezar promoções fracas\n  \n  // CPM base de compra Livelo/Esfera R$ 35,00\n  const cpmBase = 35.00;\n  const effectiveCpm = cpmBase / (1 + bonus / 100);\n  \n  // Preço de venda de referência de mercado\n  const marketCpmMap = {\n    'Latam Pass': 24.50,\n    'Smiles': 16.50,\n    'Azul': 19.00,\n    'Iberia': 75.00,\n    'TAP': 32.00\n  };\n  const targetMarketCpm = marketCpmMap[targetProg] || 20.00;\n  const spreadPercent = ((targetMarketCpm - effectiveCpm) / effectiveCpm) * 100;\n  \n  let score = 60;\n  let priority = 'NORMAL';\n  \n  if (bonus >= 100 || spreadPercent >= 30) {\n    score = 95;\n    priority = 'CRITICAL_BUG';\n  } else if (bonus >= 80 || spreadPercent >= 15) {\n    score = 85;\n    priority = 'HIGH';\n  } else if (bonus >= 50) {\n    score = 70;\n    priority = 'NORMAL';\n  }\n  \n  results.push({\n    json: {\n      category: 'miles_promo',\n      title: `${bonus}% de Bônus: ${sourceProg} ➔ ${targetProg}`,\n      description: `CPM Gerado: R$ ${effectiveCpm.toFixed(2)} vs Custo de Mercado R$ ${targetMarketCpm.toFixed(2)} | Spread: ${spreadPercent.toFixed(1)}%`,\n      original_price: cpmBase * 10,\n      opportunity_price: Number((effectiveCpm * 10).toFixed(2)),\n      discount_percentage: Number(Math.max(0, spreadPercent).toFixed(2)),\n      net_profit_estimate: spreadPercent > 0 ? Number((spreadPercent * 10).toFixed(2)) : 0,\n      fipe_or_market_ref: Number(effectiveCpm.toFixed(2)),\n      source_name: 'Radar de Milhas',\n      source_url: promo.url || 'https://livelo.com.br',\n      evaluation_score: score,\n      priority: priority,\n      raw_metadata: {\n        bonus_percentage: bonus,\n        effectiveCpm: Number(effectiveCpm.toFixed(2)),\n        targetProg,\n        sourceProg\n      }\n    }\n  });\n}\n\nreturn results;"
+      },
+      "id": "code-miles-evaluator",
+      "name": "Calculate CPM & Arbitrage Spread",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [760, 300]
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "INSERT INTO radar_hub.opportunities (\n  category,\n  title,\n  description,\n  original_price,\n  opportunity_price,\n  discount_percentage,\n  net_profit_estimate,\n  fipe_or_market_ref,\n  source_name,\n  source_url,\n  evaluation_score,\n  priority,\n  raw_metadata\n) VALUES (\n  $1::radar_hub.opportunity_type,\n  $2,\n  $3,\n  $4,\n  $5,\n  $6,\n  $7,\n  $8,\n  $9,\n  $10,\n  $11,\n  $12,\n  $13::radar_hub.priority_level,\n  $14::jsonb\n) ON CONFLICT DO NOTHING RETURNING id;"
+      },
+      "id": "db-insert-miles",
+      "name": "Persist in radar_hub.opportunities",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.5,
+      "position": [960, 300],
+      "continueOnFail": true,
+      "credentials": {
+        "postgres": {
+          "id": "CREDENTIAL_RADAR_POSTGRES",
+          "name": "Postgres (radar_hub isolated)"
+        }
+      }
+    }
+  ],
+  "connections": {
+    "Miles Promo Poll (2h)": {
+      "main": [
+        [
+          {
+            "node": "Fetch Bonus Transfers Feed",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Fetch Bonus Transfers Feed": {
+      "main": [
+        [
+          {
+            "node": "VPS Throttle Guard (2s)",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "VPS Throttle Guard (2s)": {
+      "main": [
+        [
+          {
+            "node": "Calculate CPM & Arbitrage Spread",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Calculate CPM & Arbitrage Spread": {
+      "main": [
+        [
+          {
+            "node": "Persist in radar_hub.opportunities",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "settings": {
+    "executionOrder": "v1"
+  },
+  "tags": [
+    {
+      "name": "RADAR_HUB"
+    }
+  ]
+}

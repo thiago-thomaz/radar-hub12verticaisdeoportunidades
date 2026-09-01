@@ -1,0 +1,101 @@
+{
+  "name": "[RADAR_HUB] - 12 Max Cashback & Affiliate Redirects",
+  "nodes": [
+    {
+      "parameters": {
+        "rule": {
+          "interval": [
+            {
+              "field": "hours",
+              "hoursInterval": 1
+            }
+          ]
+        }
+      },
+      "id": "trigger-cashback",
+      "name": "PollCashbackTrigger",
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "typeVersion": 1.2,
+      "position": [160, 300]
+    },
+    {
+      "parameters": {
+        "url": "https://api.cashback.exemplo.com/v1/rates/top",
+        "options": {
+          "timeout": 10000
+        }
+      },
+      "id": "http-fetch-cashback",
+      "name": "FetchCashbackRates",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [380, 300],
+      "onError": "continueRegularOutput"
+    },
+    {
+      "parameters": {
+        "jsCode": "const items = $input.all();\nconst results = [];\nfor (const item of items) {\n  const row = item.json;\n  const rate = Number(row.cashback_percent || row.rate || 0);\n  if (rate < 8) continue;\n  let score = Math.min(100, Math.floor(rate * 4.5));\n  let priority = 'NORMAL';\n  if (rate >= 20) priority = 'CRITICAL_BUG';\n  else if (rate >= 12) priority = 'HIGH';\n  results.push({\n    json: {\n      category: 'cashback_max',\n      title: `${rate}% de Cashback na ${row.store || 'Loja'} (${row.provider || 'Méliuz/Inter'})`,\n      description: `Taxa turbinada de retorno. Economia direta na compra com link parametrizado.`,\n      opportunity_price: rate,\n      original_price: 100.00,\n      discount_percentage: rate,\n      source_name: row.provider || 'Cashback Radar',\n      source_url: row.url || 'https://exemplo.com',\n      affiliate_url: row.affiliate_redirect_url || row.url,\n      evaluation_score: score,\n      priority\n    }\n  });\n}\nreturn results;"
+      },
+      "id": "code-eval-cashback",
+      "name": "EvaluateCashback",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [600, 300]
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "INSERT INTO radar_hub.opportunities (category, title, description, original_price, opportunity_price, discount_percentage, source_name, source_url, affiliate_url, evaluation_score, priority) VALUES ($1::radar_hub.opportunity_type, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11::radar_hub.priority_level) ON CONFLICT DO NOTHING RETURNING id;"
+      },
+      "id": "db-persist-cashback",
+      "name": "PersistCashback",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.5,
+      "position": [820, 300],
+      "onError": "continueRegularOutput"
+    }
+  ],
+  "connections": {
+    "PollCashbackTrigger": {
+      "main": [
+        [
+          {
+            "node": "FetchCashbackRates",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "FetchCashbackRates": {
+      "main": [
+        [
+          {
+            "node": "EvaluateCashback",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "EvaluateCashback": {
+      "main": [
+        [
+          {
+            "node": "PersistCashback",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "settings": {
+    "executionOrder": "v1"
+  },
+  "tags": [
+    {
+      "name": "RADAR_HUB"
+    }
+  ]
+}

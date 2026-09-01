@@ -1,0 +1,110 @@
+{
+  "name": "[RADAR_HUB] - 07 One-Click Checkout & Buy Engine",
+  "nodes": [
+    {
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "one-click-buy",
+        "options": {}
+      },
+      "id": "webhook-buy-trigger",
+      "name": "Webhook One-Click Buy",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2,
+      "position": [160, 300],
+      "webhookId": "radar-one-click-buy"
+    },
+    {
+      "parameters": {
+        "jsCode": "// Inicialização da Ordem de Compra Blindada\nconst body = $input.item.json.body || {};\nconst opportunityId = body.opportunityId || null;\nconst targetUrl = body.targetUrl || 'https://exemplo.com';\nconst price = Number(body.price || 0);\nconst orderId = 'ORD_' + Date.now();\n\nconst pixCode = `00020126580014BR.GOV.BCB.PIX0136${orderId}520400005303986540510.005802BR5915RADAR_HUB6009SAO_PAULO62070503***6304ABCD`;\n\nreturn [{\n  json: {\n    orderId,\n    opportunityId,\n    targetUrl,\n    finalPrice: price,\n    pixCode,\n    pixQrUrl: `https://api.qrserver.com/v1/create-qr-code/?size=250x250&data=${orderId}`,\n    status: 'PIX_PENDING'\n  }\n}];"
+      },
+      "id": "code-build-order",
+      "name": "Build Checkout Order",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [380, 300]
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "INSERT INTO radar_hub.checkout_orders (\n  opportunity_id,\n  target_url,\n  final_checkout_price,\n  pix_code,\n  pix_qr_url,\n  order_status\n) VALUES (\n  $1::uuid,\n  $2,\n  $3,\n  $4,\n  $5,\n  'PIX_PENDING'\n) RETURNING id;"
+      },
+      "id": "db-insert-order",
+      "name": "Persist in radar_hub.checkout_orders",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.5,
+      "position": [600, 300],
+      "continueOnFail": true,
+      "credentials": {
+        "postgres": {
+          "id": "CREDENTIAL_RADAR_POSTGRES",
+          "name": "Postgres (radar_hub isolated)"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "chatId": "=@canal_radar_hub_alertas",
+        "text": "⚡ **[PEDIDO DE COMPRA 1-CLIQUE GERADO]** ⚡\n\n💰 **Valor:** R$ {{ $json.finalPrice }}\n🆔 **Ordem:** {{ $json.orderId }}\n\n📲 **Código PIX Copia e Cola:**\n`{{ $json.pixCode }}`\n\n⏳ *Efetue o pagamento em até 10 minutos para concluir a reserva.*",
+        "additionalFields": {
+          "parse_mode": "Markdown"
+        }
+      },
+      "id": "tg-notify-order",
+      "name": "Send PIX to Telegram",
+      "type": "n8n-nodes-base.telegram",
+      "typeVersion": 1.2,
+      "position": [820, 300],
+      "continueOnFail": true,
+      "credentials": {
+        "telegramApi": {
+          "id": "CREDENTIAL_RADAR_TELEGRAM",
+          "name": "Telegram Bot (RADAR_HUB)"
+        }
+      }
+    }
+  ],
+  "connections": {
+    "Webhook One-Click Buy": {
+      "main": [
+        [
+          {
+            "node": "Build Checkout Order",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Build Checkout Order": {
+      "main": [
+        [
+          {
+            "node": "Persist in radar_hub.checkout_orders",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Persist in radar_hub.checkout_orders": {
+      "main": [
+        [
+          {
+            "node": "Send PIX to Telegram",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "settings": {
+    "executionOrder": "v1"
+  },
+  "tags": [
+    {
+      "name": "RADAR_HUB"
+    }
+  ]
+}

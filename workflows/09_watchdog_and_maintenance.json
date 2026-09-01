@@ -1,0 +1,182 @@
+{
+  "name": "[RADAR_HUB] - 09 Watchdog & Storage Zero-Touch Maintenance",
+  "nodes": [
+    {
+      "parameters": {
+        "rule": {
+          "interval": [
+            {
+              "field": "minutes",
+              "minutesInterval": 30
+            }
+          ]
+        }
+      },
+      "id": "trigger-watchdog",
+      "name": "Watchdog Cron (30m)",
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "typeVersion": 1.2,
+      "position": [160, 300]
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "SELECT COUNT(*) AS count_2h FROM radar_hub.opportunities WHERE created_at >= NOW() - INTERVAL '2 hours';"
+      },
+      "id": "db-health-check",
+      "name": "Check Ingestion Health (Last 2h)",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.5,
+      "position": [380, 300],
+      "continueOnFail": true,
+      "credentials": {
+        "postgres": {
+          "id": "CREDENTIAL_RADAR_POSTGRES",
+          "name": "Postgres (radar_hub isolated)"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "number": [
+            {
+              "value1": "={{ Number($json.count_2h || 0) }}",
+              "operation": "equal",
+              "value2": 0
+            }
+          ]
+        }
+      },
+      "id": "if-stalled",
+      "name": "Is Ingestion Stalled?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [600, 300]
+    },
+    {
+      "parameters": {
+        "chatId": "=@canal_radar_hub_admin",
+        "text": "⚠️ **[RADAR_HUB WATCHDOG]**\n\nAtenção: Nenhum novo dado inserido em `radar_hub.opportunities` nas últimas 2 horas.\n\n🔍 **Possível causa:** Mudança de layout em portais de leilão/e-commerce ou bloqueio temporário de IP. Verifique os seletores.",
+        "additionalFields": {
+          "disable_notification": true,
+          "parse_mode": "Markdown"
+        }
+      },
+      "id": "tg-silent-alert",
+      "name": "Silent Telegram Admin Alert",
+      "type": "n8n-nodes-base.telegram",
+      "typeVersion": 1.2,
+      "position": [820, 200],
+      "continueOnFail": true,
+      "credentials": {
+        "telegramApi": {
+          "id": "CREDENTIAL_RADAR_TELEGRAM",
+          "name": "Telegram Bot (RADAR_HUB)"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "SELECT * FROM radar_hub.run_storage_maintenance();"
+      },
+      "id": "db-storage-clean",
+      "name": "Run Zero-Touch Storage Maintenance",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.5,
+      "position": [820, 420],
+      "continueOnFail": true,
+      "credentials": {
+        "postgres": {
+          "id": "CREDENTIAL_RADAR_POSTGRES",
+          "name": "Postgres (radar_hub isolated)"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "INSERT INTO radar_hub.watchdog_logs (check_type, records_last_2h, cleaned_records_count, archived_records_count, status) VALUES ('HEALTH_AND_MAINTENANCE', $1, $2, $3, 'HEALTHY');"
+      },
+      "id": "db-log-watchdog",
+      "name": "Log Watchdog Status",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.5,
+      "position": [1040, 420],
+      "continueOnFail": true,
+      "credentials": {
+        "postgres": {
+          "id": "CREDENTIAL_RADAR_POSTGRES",
+          "name": "Postgres (radar_hub isolated)"
+        }
+      }
+    }
+  ],
+  "connections": {
+    "Watchdog Cron (30m)": {
+      "main": [
+        [
+          {
+            "node": "Check Ingestion Health (Last 2h)",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Check Ingestion Health (Last 2h)": {
+      "main": [
+        [
+          {
+            "node": "Is Ingestion Stalled?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Is Ingestion Stalled?": {
+      "main": [
+        [
+          {
+            "node": "Silent Telegram Admin Alert",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "Run Zero-Touch Storage Maintenance",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Run Zero-Touch Storage Maintenance",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Run Zero-Touch Storage Maintenance": {
+      "main": [
+        [
+          {
+            "node": "Log Watchdog Status",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "settings": {
+    "executionOrder": "v1"
+  },
+  "tags": [
+    {
+      "name": "RADAR_HUB"
+    }
+  ]
+}

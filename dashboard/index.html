@@ -1,0 +1,189 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>RADAR_HUB — Cockpit Supremo de Arbitragem & Oportunidades</title>
+  <meta name="theme-color" content="#080c14">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+  <meta name="apple-mobile-web-app-title" content="RADAR_HUB">
+  <link rel="manifest" href="manifest.json">
+  <link rel="apple-touch-icon" href="icons/icon-192.png">
+  <link rel="icon" type="image/svg+xml" href="icons/icon.svg">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+  <div class="bg-mesh"></div>
+
+  <!-- Header -->
+  <header class="top-nav">
+    <div class="brand">
+      <div class="brand-icon">⚡</div>
+      <div>
+        <h1 class="brand-title">RADAR_HUB SUPREMO</h1>
+        <p style="font-size: 0.75rem; color: var(--text-muted);">Monitoramento Unificado: E-commerce, Leilões, Bauru, Licitações, Domínios & Vagas</p>
+      </div>
+    </div>
+    <div class="header-badges">
+      <!-- PWA Action Controls -->
+      <button class="filter-btn" id="btn-pwa-install" style="display: none; background: rgba(0, 242, 254, 0.15); border-color: var(--accent-cyan); color: var(--accent-cyan); font-weight: 700;">
+        📲 Instalar App PWA
+      </button>
+      <button class="filter-btn" id="btn-push-subscribe" style="background: rgba(56, 239, 125, 0.15); border-color: var(--accent-green); color: var(--accent-green);">
+        🔔 Ativar Notificações Push
+      </button>
+      <div class="system-status" id="ws-status-badge">
+        <span class="status-dot live" id="ws-dot"></span>
+        <span id="ws-status-text">WEBSOCKET CONECTADO</span>
+      </div>
+      <div class="system-status latency" id="latency-badge">
+        <span>⚡ DB: <strong id="latency-val">1.2ms</strong></span>
+      </div>
+      <div class="system-status proxies" id="proxy-badge">
+        <span>🛡️ Proxies: <strong id="proxy-val">14/15</strong></span>
+      </div>
+    </div>
+  </header>
+
+  <main class="dashboard-container">
+    <!-- Top Metric Cards -->
+    <section class="metrics-grid">
+      <div class="metric-card">
+        <div class="metric-header">
+          <span class="metric-title">Lucro Projetado (24h)</span>
+          <span class="metric-icon">💰</span>
+        </div>
+        <div class="metric-value" id="val-profit-24h">R$ 142.850</div>
+        <div class="metric-sub">▲ +38.4% vs. dia anterior</div>
+      </div>
+
+      <div class="metric-card">
+        <div class="metric-header">
+          <span class="metric-title">Economia Total (7 Dias)</span>
+          <span class="metric-icon">📈</span>
+        </div>
+        <div class="metric-value" id="val-profit-7d">R$ 684.200</div>
+        <div class="metric-sub">🔥 124 Oportunidades capturadas</div>
+      </div>
+
+      <div class="metric-card">
+        <div class="metric-header">
+          <span class="metric-title">Bugs & Sweet Spots Críticos</span>
+          <span class="metric-icon">🚨</span>
+        </div>
+        <div class="metric-value" style="color: var(--accent-red);" id="val-bugs-count">19</div>
+        <div class="metric-sub" style="color: var(--accent-red);">● 100% Notificados no Telegram</div>
+      </div>
+
+      <div class="metric-card">
+        <div class="metric-header">
+          <span class="metric-title">Vagas & Licitações Quentes</span>
+          <span class="metric-icon">🎯</span>
+        </div>
+        <div class="metric-value" style="color: var(--accent-cyan);" id="val-tenders-jobs">37</div>
+        <div class="metric-sub" style="color: var(--accent-cyan);">● Remoto USD & PNCP Ativos</div>
+      </div>
+    </section>
+
+    <!-- Live Execution Logs Drawer -->
+    <section class="panel-box log-drawer">
+      <div class="log-header">
+        <span>📡 <strong>STREAM DE EXECUÇÃO & EVENTOS EM TEMPO REAL</strong></span>
+        <span class="log-count" id="log-count">0 eventos</span>
+      </div>
+      <div class="log-feed" id="log-feed">
+        <div class="log-entry info"><span class="log-time">[00:00:00]</span> <strong>DAEMON_MASTER:</strong> Inicializando conexão com o stream de eventos...</div>
+      </div>
+    </section>
+
+    <!-- Opportunities Live Table -->
+    <section class="panel-box">
+      <div class="table-controls">
+        <h2 class="panel-title">Radar de Oportunidades em Alta (Tempo Real)</h2>
+        <div class="filter-group">
+          <button class="filter-btn active" data-filter="ALL">Todas (12 Verticais)</button>
+          <button class="filter-btn" data-filter="price_bug">Bugs</button>
+          <button class="filter-btn" data-filter="car_auction">Leilões Veículos</button>
+          <button class="filter-btn" data-filter="real_estate_local">Imóveis Bauru</button>
+          <button class="filter-btn" data-filter="public_tender">Licitações PNCP</button>
+          <button class="filter-btn" data-filter="expired_domain">Domínios Expirando</button>
+          <button class="filter-btn" data-filter="remote_job">Vagas Remotas USD</button>
+          <button class="filter-btn" data-filter="coupon_deal">Cupons</button>
+          <button class="filter-btn" data-filter="cashback_max">Cashback Max</button>
+          <button class="filter-btn" data-filter="sweepstake_promo">Sorteios SECAP</button>
+          <button class="filter-btn" data-filter="miles_promo">Milhas CPM</button>
+          <button class="filter-btn" data-filter="microtask_gig">Microtarefas</button>
+        </div>
+      </div>
+
+      <div class="table-wrapper">
+        <table id="opportunities-table">
+          <thead>
+            <tr>
+              <th>Categoria</th>
+              <th>Título da Oportunidade</th>
+              <th>Preço / Custo</th>
+              <th>Ref. / Mercado</th>
+              <th>Desconto / Retorno</th>
+              <th>Score</th>
+              <th>Status</th>
+              <th>Ação Rápida</th>
+            </tr>
+          </thead>
+          <tbody id="table-body">
+            <!-- Rendered dynamically by app.js -->
+          </tbody>
+        </table>
+      </div>
+    </section>
+  </main>
+
+  <!-- One-Click Buy Modal -->
+  <div class="modal-backdrop" id="checkout-modal">
+    <div class="modal-box">
+      <h3 style="font-size: 1.25rem; font-weight: 800; margin-bottom: 0.5rem;" id="modal-title">Compra em 1-Clique</h3>
+      <p style="font-size: 0.85rem; color: var(--text-muted); margin-bottom: 1.25rem;">Carrinho blindado automaticamente pelo worker. Conclua via PIX abaixo.</p>
+      
+      <div style="background: #fff; padding: 1rem; border-radius: 12px; display: inline-block; margin-bottom: 1rem;">
+        <img id="modal-qr" src="" alt="QR Code PIX" style="width: 180px; height: 180px; display: block;">
+      </div>
+
+      <div style="font-size: 0.9rem; font-weight: 700; margin-bottom: 0.75rem;" id="modal-price">Valor: R$ 0,00</div>
+      
+      <div style="display: flex; gap: 0.5rem; justify-content: center; margin-top: 1rem;">
+        <button class="filter-btn" onclick="closeModal()">Fechar</button>
+        <button class="btn-action btn-buy" onclick="copyPixCode()">Copiar Código PIX</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- LegalTech Modal (Notificação Extrajudicial & Petição JEC) -->
+  <div class="modal-backdrop" id="legal-modal">
+    <div class="modal-box" style="max-width: 650px; text-align: left;">
+      <h3 style="font-size: 1.25rem; font-weight: 800; margin-bottom: 0.5rem; color: var(--accent-cyan);" id="legal-modal-title">⚖️ Módulo Jurídico LegalTech — Cumprimento Forçado de Oferta (CDC Art. 30/35)</h3>
+      <p style="font-size: 0.85rem; color: var(--text-muted); margin-bottom: 1rem;">Minutas jurídicas fundamentadas geradas para exigir a entrega do produto ou indenização no JEC.</p>
+      
+      <div style="display: flex; gap: 0.5rem; margin-bottom: 0.75rem;">
+        <button class="filter-btn active" id="btn-tab-notice" onclick="switchLegalTab('notice')">Notificação Extrajudicial (48h)</button>
+        <button class="filter-btn" id="btn-tab-jec" onclick="switchLegalTab('jec')">Petição Inicial JEC (Sem Advogado)</button>
+      </div>
+
+      <textarea id="legal-doc-content" readonly style="width: 100%; height: 260px; background: rgba(0,0,0,0.5); color: #e2e8f0; font-family: monospace; font-size: 0.75rem; border: 1px solid var(--border-color); border-radius: 8px; padding: 0.75rem; resize: none;"></textarea>
+
+      <div style="display: flex; gap: 0.5rem; justify-content: flex-end; margin-top: 1rem;">
+        <button class="filter-btn" onclick="closeLegalModal()">Fechar</button>
+        <button class="btn-action btn-buy" onclick="copyLegalText()">📋 Copiar Texto Completo</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Toast Container for Critical Alerts -->
+  <div id="toast-container" class="toast-container"></div>
+
+  <script src="app.js"></script>
+</body>
+</html>

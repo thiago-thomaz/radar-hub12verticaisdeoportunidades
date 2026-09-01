@@ -1,0 +1,14 @@
+apiVersion: 1
+
+providers:
+  - name: 'RADAR_HUB Observability'
+    orgId: 1
+    folder: 'RADAR_HUB'
+    type: file
+    disableDeletion: false
+    editable: true
+    updateIntervalSeconds: 10
+    allowUiUpdates: true
+    options:
+      path: /etc/grafana/provisioning/dashboards
+      foldersFromFilesStructure: false

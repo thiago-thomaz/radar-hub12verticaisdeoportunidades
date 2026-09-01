@@ -1,0 +1,101 @@
+{
+  "name": "[RADAR_HUB] - 18 Microtasks & Instant Digital Gigs",
+  "nodes": [
+    {
+      "parameters": {
+        "rule": {
+          "interval": [
+            {
+              "field": "minutes",
+              "minutesInterval": 30
+            }
+          ]
+        }
+      },
+      "id": "trigger-microtasks",
+      "name": "PollMicrotasksTrigger",
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "typeVersion": 1.2,
+      "position": [160, 300]
+    },
+    {
+      "parameters": {
+        "url": "https://api.microtarefas.exemplo.com/v1/available-gigs",
+        "options": {
+          "timeout": 10000
+        }
+      },
+      "id": "http-fetch-microtasks",
+      "name": "FetchDigitalGigs",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [380, 300],
+      "onError": "continueRegularOutput"
+    },
+    {
+      "parameters": {
+        "jsCode": "const items = $input.all();\nconst results = [];\nfor (const item of items) {\n  const g = item.json;\n  const reward = Number(g.reward_brl || 15.00);\n  const minutes = Number(g.est_minutes || 10);\n  const hourlyRate = (reward / minutes) * 60;\n  let score = 60;\n  let priority = 'NORMAL';\n  if (hourlyRate >= 60) { score = 95; priority = 'CRITICAL_BUG'; }\n  else if (hourlyRate >= 40) { score = 80; priority = 'HIGH'; }\n  results.push({\n    json: {\n      category: 'microtask_gig',\n      title: `Microtarefa (${g.platform || 'Appen/Remotasks'}): ${g.title || 'Rotulação / Validação'}`,\n      description: `Pagamento: R$ ${reward.toFixed(2)} por ${minutes}m (Taxa Horária R$ ${hourlyRate.toFixed(2)}/h). Execução rápida online.`,\n      opportunity_price: reward,\n      original_price: reward,\n      net_profit_estimate: reward,\n      source_name: g.platform || 'Microtask Hub',\n      source_url: g.url || 'https://exemplo.com',\n      evaluation_score: score,\n      priority\n    }\n  });\n}\nreturn results;"
+      },
+      "id": "code-eval-microtasks",
+      "name": "EvaluateMicrotasks",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [600, 300]
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "INSERT INTO radar_hub.opportunities (category, title, description, original_price, opportunity_price, net_profit_estimate, source_name, source_url, evaluation_score, priority) VALUES ($1::radar_hub.opportunity_type, $2, $3, $4, $5, $6, $7, $8, $9, $10::radar_hub.priority_level) ON CONFLICT DO NOTHING RETURNING id;"
+      },
+      "id": "db-persist-microtasks",
+      "name": "PersistMicrotasks",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.5,
+      "position": [820, 300],
+      "onError": "continueRegularOutput"
+    }
+  ],
+  "connections": {
+    "PollMicrotasksTrigger": {
+      "main": [
+        [
+          {
+            "node": "FetchDigitalGigs",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "FetchDigitalGigs": {
+      "main": [
+        [
+          {
+            "node": "EvaluateMicrotasks",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "EvaluateMicrotasks": {
+      "main": [
+        [
+          {
+            "node": "PersistMicrotasks",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "settings": {
+    "executionOrder": "v1"
+  },
+  "tags": [
+    {
+      "name": "RADAR_HUB"
+    }
+  ]
+}

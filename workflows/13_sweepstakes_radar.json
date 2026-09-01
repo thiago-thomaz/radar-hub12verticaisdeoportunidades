@@ -1,0 +1,101 @@
+{
+  "name": "[RADAR_HUB] - 13 SECAP Sweepstakes & Fast Contests",
+  "nodes": [
+    {
+      "parameters": {
+        "rule": {
+          "interval": [
+            {
+              "field": "hours",
+              "hoursInterval": 4
+            }
+          ]
+        }
+      },
+      "id": "trigger-sweepstakes",
+      "name": "PollSweepstakesTrigger",
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "typeVersion": 1.2,
+      "position": [160, 300]
+    },
+    {
+      "parameters": {
+        "url": "https://api.promocoes-oficiais.exemplo.com/v1/secap/active",
+        "options": {
+          "timeout": 12000
+        }
+      },
+      "id": "http-fetch-sweepstakes",
+      "name": "FetchSecapPromos",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [380, 300],
+      "onError": "continueRegularOutput"
+    },
+    {
+      "parameters": {
+        "jsCode": "const items = $input.all();\nconst results = [];\nfor (const item of items) {\n  const p = item.json;\n  const prizeValue = Number(p.prize_value || p.total_prizes || 10000);\n  const isFree = p.is_free_registration !== false;\n  let score = 70;\n  let priority = 'NORMAL';\n  if (isFree && prizeValue >= 50000) { score = 95; priority = 'CRITICAL_BUG'; }\n  else if (prizeValue >= 20000) { score = 85; priority = 'HIGH'; }\n  results.push({\n    json: {\n      category: 'sweepstake_promo',\n      title: `Sorteio Oficial ${p.brand || 'Marca'}: Prêmio R$ ${prizeValue.toLocaleString('pt-BR')}`,\n      description: `Certificado SECAP/SRE nº ${p.secap_cert || 'Oficial'} | Cadastro ${isFree ? '100% Gratuito/Formulário Rápido' : 'Compre e Concorra'}`,\n      opportunity_price: 0,\n      original_price: prizeValue,\n      net_profit_estimate: prizeValue,\n      source_name: p.brand || 'SECAP/SRE Promo',\n      source_url: p.url || 'https://exemplo.com',\n      evaluation_score: score,\n      priority\n    }\n  });\n}\nreturn results;"
+      },
+      "id": "code-eval-sweepstakes",
+      "name": "EvaluateSweepstakes",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [600, 300]
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "INSERT INTO radar_hub.opportunities (category, title, description, original_price, opportunity_price, net_profit_estimate, source_name, source_url, evaluation_score, priority) VALUES ($1::radar_hub.opportunity_type, $2, $3, $4, $5, $6, $7, $8, $9, $10::radar_hub.priority_level) ON CONFLICT DO NOTHING RETURNING id;"
+      },
+      "id": "db-persist-sweepstakes",
+      "name": "PersistSweepstakes",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.5,
+      "position": [820, 300],
+      "onError": "continueRegularOutput"
+    }
+  ],
+  "connections": {
+    "PollSweepstakesTrigger": {
+      "main": [
+        [
+          {
+            "node": "FetchSecapPromos",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "FetchSecapPromos": {
+      "main": [
+        [
+          {
+            "node": "EvaluateSweepstakes",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "EvaluateSweepstakes": {
+      "main": [
+        [
+          {
+            "node": "PersistSweepstakes",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "settings": {
+    "executionOrder": "v1"
+  },
+  "tags": [
+    {
+      "name": "RADAR_HUB"
+    }
+  ]
+}

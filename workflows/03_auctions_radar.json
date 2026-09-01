@@ -1,0 +1,130 @@
+{
+  "name": "[RADAR_HUB] - 03 Judicial & Asset Auctions Radar",
+  "nodes": [
+    {
+      "parameters": {
+        "rule": {
+          "interval": [
+            {
+              "field": "hours",
+              "hoursInterval": 1
+            }
+          ]
+        }
+      },
+      "id": "schedule-auctions",
+      "name": "Auction Poll (1h)",
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "typeVersion": 1.2,
+      "position": [160, 300]
+    },
+    {
+      "parameters": {
+        "url": "https://api.leiloes.exemplo.com/v1/lots/active",
+        "options": {
+          "timeout": 15000
+        }
+      },
+      "id": "http-fetch-auctions",
+      "name": "Fetch Live Auction Lots",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [360, 300],
+      "continueOnFail": true
+    },
+    {
+      "parameters": {
+        "amount": 2.5,
+        "unit": "seconds"
+      },
+      "id": "wait-throttle-auctions",
+      "name": "VPS Throttle Guard (2.5s)",
+      "type": "n8n-nodes-base.wait",
+      "typeVersion": 1.1,
+      "position": [560, 300],
+      "webhookId": "radar-auctions-throttle"
+    },
+    {
+      "parameters": {
+        "jsCode": "// Normalização e Motor de Avaliação de Leilões vs FIPE / Mercado\nconst items = $input.all();\nconst results = [];\n\nfor (const item of items) {\n  const lot = item.json;\n  const bidPrice = Number(lot.bid_price || lot.initial_bid || 0);\n  const marketRef = Number(lot.fipe_value || lot.market_value || lot.appraisal_value || 0);\n  \n  if (bidPrice <= 0 || marketRef <= 0) continue;\n  \n  // Custos Reais: 5% leiloeiro + R$ 1.500 despesas + 10% margem de reparo\n  const auctionFee = bidPrice * 0.05;\n  const repairBuffer = marketRef * 0.10;\n  const totalCost = bidPrice + auctionFee + 1500 + repairBuffer;\n  const netProfit = marketRef - totalCost;\n  const netMarginPercent = (netProfit / marketRef) * 100;\n  const discountVsRef = ((marketRef - bidPrice) / marketRef) * 100;\n  \n  let category = 'car_auction';\n  if (lot.type === 'real_estate') category = 'real_estate_auction';\n  if (lot.type === 'machinery' || lot.type === 'industrial') category = 'industrial_auction';\n  \n  let score = 50;\n  let priority = 'NORMAL';\n  \n  if (netMarginPercent >= 35 || discountVsRef >= 60) {\n    score = 95;\n    priority = 'CRITICAL_BUG'; // Oportunidade extrema de arremate\n  } else if (netMarginPercent >= 20 || discountVsRef >= 45) {\n    score = 80;\n    priority = 'HIGH';\n  } else if (netMarginPercent >= 10) {\n    score = 65;\n    priority = 'NORMAL';\n  }\n  \n  if (score >= 65) {\n    results.push({\n      json: {\n        category: category,\n        title: lot.title || `Lote ${lot.lot_number} - Leilão`,\n        description: `Deságio: ${discountVsRef.toFixed(1)}% | Margem Líquida Est.: ${netMarginPercent.toFixed(1)}% (Lucro: R$ ${netProfit.toFixed(2)})`,\n        original_price: marketRef,\n        opportunity_price: bidPrice,\n        discount_percentage: Number(discountVsRef.toFixed(2)),\n        net_profit_estimate: Number(netProfit.toFixed(2)),\n        fipe_or_market_ref: marketRef,\n        location: lot.state || lot.city || 'Brasil',\n        source_name: lot.auctioneer_name || 'Portal de Leilões',\n        source_url: lot.url || 'https://leilao.exemplo.com',\n        evaluation_score: score,\n        priority: priority,\n        raw_metadata: {\n          netMarginPercent: Number(netMarginPercent.toFixed(2)),\n          totalEstimatedCost: Number(totalCost.toFixed(2))\n        }\n      }\n    });\n  }\n}\n\nreturn results;"
+      },
+      "id": "code-auction-evaluator",
+      "name": "Calculate Net Margin vs FIPE",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [760, 300]
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "INSERT INTO radar_hub.opportunities (\n  category,\n  title,\n  description,\n  original_price,\n  opportunity_price,\n  discount_percentage,\n  net_profit_estimate,\n  fipe_or_market_ref,\n  location,\n  source_name,\n  source_url,\n  evaluation_score,\n  priority,\n  raw_metadata\n) VALUES (\n  $1::radar_hub.opportunity_type,\n  $2,\n  $3,\n  $4,\n  $5,\n  $6,\n  $7,\n  $8,\n  $9,\n  $10,\n  $11,\n  $12,\n  $13::radar_hub.priority_level,\n  $14::jsonb\n) ON CONFLICT DO NOTHING RETURNING id;"
+      },
+      "id": "db-insert-auction",
+      "name": "Persist in radar_hub.opportunities",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.5,
+      "position": [960, 300],
+      "continueOnFail": true,
+      "credentials": {
+        "postgres": {
+          "id": "CREDENTIAL_RADAR_POSTGRES",
+          "name": "Postgres (radar_hub isolated)"
+        }
+      }
+    }
+  ],
+  "connections": {
+    "Auction Poll (1h)": {
+      "main": [
+        [
+          {
+            "node": "Fetch Live Auction Lots",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Fetch Live Auction Lots": {
+      "main": [
+        [
+          {
+            "node": "VPS Throttle Guard (2.5s)",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "VPS Throttle Guard (2.5s)": {
+      "main": [
+        [
+          {
+            "node": "Calculate Net Margin vs FIPE",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Calculate Net Margin vs FIPE": {
+      "main": [
+        [
+          {
+            "node": "Persist in radar_hub.opportunities",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "settings": {
+    "executionOrder": "v1"
+  },
+  "tags": [
+    {
+      "name": "RADAR_HUB"
+    }
+  ]
+}

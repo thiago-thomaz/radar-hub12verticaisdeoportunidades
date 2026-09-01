@@ -1,0 +1,260 @@
+openapi: 3.0.3
+info:
+  title: RADAR_HUB API — Cockpit Supremo de Arbitragem & Oportunidades
+  version: 1.0.0
+  description: >
+    API RESTful e WebSockets para detecção de oportunidades em tempo real nas 12 verticais
+    (Bugs de Preço, Leilões de Veículos, Imóveis Bauru, Licitações PNCP, Domínios Expirando,
+    Vagas Remotas USD, Cupons, Cashback, Sorteios SECAP, Milhas CPM, Microtarefas e Stacking),
+    IA Preditiva de Cancelamento, Módulo Jurídico LegalTech e Multi-Gateway de Pagamentos.
+  contact:
+    name: RADAR_HUB SRE Team
+    email: sre@radarhub.com
+servers:
+  - url: http://localhost:3000
+    description: Servidor Local de Desenvolvimento
+  - url: https://radarhub.local
+    description: Gateway Nginx de Produção
+
+paths:
+  /health:
+    get:
+      summary: Healthcheck da Aplicação e Dependências
+      description: Retorna o status de saúde do PostgreSQL, Redis, memória Node.js e scraper daemon.
+      responses:
+        '200':
+          description: Sistema operacional e saudável
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  status:
+                    type: string
+                    example: HEALTHY
+                  timestamp:
+                    type: string
+                  uptimeSeconds:
+                    type: number
+                  postgres:
+                    type: string
+                    example: CONNECTED
+                  redis:
+                    type: string
+                    example: CONNECTED
+
+  /metrics:
+    get:
+      summary: Exportador de Métricas OpenMetrics / Prometheus
+      description: Métricas de latência, contadores de oportunidades por vertical e status do sistema.
+      responses:
+        '200':
+          description: Métricas formatadas no padrão Prometheus
+          content:
+            text/plain:
+              schema:
+                type: string
+
+  /api/evaluate:
+    post:
+      summary: Avaliação Unificada de Oportunidade com IA Preditiva
+      description: Processa payloads das 12 verticais, calcula score (0-100), risco de cancelamento e projeta margem.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [category, payload]
+              properties:
+                category:
+                  type: string
+                  enum:
+                    - price_bug
+                    - car_auction
+                    - industrial_auction
+                    - real_estate_local
+                    - public_tender
+                    - expired_domain
+                    - remote_job
+                    - coupon_deal
+                    - cashback_max
+                    - sweepstake_promo
+                    - miles_promo
+                    - microtask_gig
+                payload:
+                  type: object
+      responses:
+        '200':
+          description: Oportunidade avaliada com sucesso
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                  opportunity:
+                    type: object
+                  predictiveInsights:
+                    type: object
+
+  /api/checkout/create-order:
+    post:
+      summary: Criação de Ordem de Compra 1-Clique & PIX Copia e Cola
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                opportunityId:
+                  type: string
+                targetUrl:
+                  type: string
+                maxPriceLimit:
+                  type: number
+                accountEmail:
+                  type: string
+      responses:
+        '200':
+          description: Pedido blindado e PIX gerado
+
+  /api/checkout/session:
+    post:
+      summary: Sessão Multi-Gateway de Pagamentos (Mercado Pago, Asaas, Stripe)
+      description: Geração de cobranças com failover automático e split de pagamento.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [customer, amount, planTier]
+              properties:
+                customer:
+                  type: object
+                  properties:
+                    name: { type: string }
+                    email: { type: string }
+                amount: { type: number }
+                currency: { type: string, enum: [BRL, USD, EUR] }
+                planTier: { type: string, enum: [VIP_MONTHLY, VIP_ANNUAL, VIP_LIFETIME] }
+      responses:
+        '200':
+          description: Sessão criada com sucesso
+
+  /api/legal/generate-notice:
+    post:
+      summary: Módulo LegalTech — Geração de Notificação Extrajudicial & Petição JEC
+      description: Gera minutas fundamentadas no Art. 30 e 35 do CDC para cumprimento forçado de oferta.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [consumer, merchant, dispute]
+      responses:
+        '200':
+          description: Peças jurídicas geradas em Markdown e texto puro
+
+  /api/push/subscribe:
+    post:
+      summary: Inscrição de Dispositivo para Web Push Notifications PWA
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [endpoint, keys]
+      responses:
+        '200':
+          description: Inscrição registrada com sucesso
+
+  /api/affiliates/generate:
+    post:
+      summary: Injeção de Tags de Afiliados e Encurtador Deep Link
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [targetUrl]
+              properties:
+                targetUrl: { type: string }
+                customTag: { type: string }
+                campaign: { type: string }
+      responses:
+        '200':
+          description: Link de afiliado e short link gerados
+
+  /api/cross-border/calculate:
+    post:
+      summary: Motor de Arbitragem Cross-Border e Impostos Remessa Conforme
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [foreignPrice, currency, localMarketRefBrl]
+              properties:
+                foreignPrice: { type: number }
+                currency: { type: string, enum: [USD, EUR, GBP, JPY, CNY] }
+                shippingForeign: { type: number }
+                localMarketRefBrl: { type: number }
+      responses:
+        '200':
+          description: Detalhamento de impostos (II, ICMS) e margem líquida em BRL
+
+  /api/sniper/execute:
+    post:
+      summary: Sniper Headless de 1-Clique para Compras Rápidas
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [targetUrl, maxPrice]
+              properties:
+                targetUrl: { type: string }
+                maxPrice: { type: number }
+                coupons: { type: array, items: { type: string } }
+      responses:
+        '200':
+          description: Snapshot e execução do sniper concluídos
+
+components:
+  securitySchemes:
+    BearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+      description: Token JWT para autenticação de assinantes VIP e administradores.
+    ApiKeyAuth:
+      type: apiKey
+      in: header
+      name: X-API-KEY
+      description: Chave de API para integração de workers e bots externos.
+
+  schemas:
+    WebSocketEvents:
+      description: Eventos transmitidos bidirecionalmente via WebSockets (ws://localhost:3000 ou wss://radarhub.local/ws)
+      properties:
+        INIT_STATE:
+          type: string
+          description: Enviado na conexão inicial contendo snapshot das 25 oportunidades mais recentes.
+        NEW_OPPORTUNITY:
+          type: string
+          description: Transmitido em tempo real quando uma oportunidade com score >= 75 é detectada.
+        VIP_ACTIVATED:
+          type: string
+          description: Transmitido quando uma transação de assinatura VIP é confirmada via Webhook.
+        PIPELINE_EXECUTION:
+          type: string
+          description: Logs em tempo real da execução dos workers de captura e scraping.
