@@ -2,6 +2,8 @@
 
 Sistema unificado e autônomo para monitoramento de 12 verticais de oportunidades, precificação algorítmica, execução de compras 1-clique, monetização VIP e manutenção auto-healing.
 
+> 🚀 **Deploy Automático:** Ativo via Coolify (`radar.projetosunion.cloud`)
+
 ---
 
 ## 📁 12 Verticais Monitoradas
