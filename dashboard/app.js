@@ -23,7 +23,8 @@ const MAX_VISIBLE_TOASTS = 2;
 const TOAST_DURATION_MS = 4000;
 let isVisualToastsSilenced = localStorage.getItem('radar_silence_visual_toasts') === 'true';
 
-const categoryMap = {
+// Fallback de categorias caso routes.js não seja carregado
+const defaultCategoryMap = {
   price_bug: { label: 'Bug de Preço', class: 'badge-bug' },
   car_auction: { label: 'Leilão FIPE', class: 'badge-auction' },
   industrial_auction: { label: 'Leilão Industrial', class: 'badge-auction' },
@@ -38,6 +39,14 @@ const categoryMap = {
   microtask_gig: { label: 'Microtarefa', class: 'badge-stacking' },
   stacking_deal: { label: 'Stacking', class: 'badge-stacking' }
 };
+
+function getCategoryInfo(categoryId) {
+  if (typeof window !== 'undefined' && window.RADAR_VERTICALS && window.RADAR_VERTICALS[categoryId]) {
+    const v = window.RADAR_VERTICALS[categoryId];
+    return { label: v.name, class: v.badgeClass };
+  }
+  return defaultCategoryMap[categoryId] || { label: categoryId, class: 'badge-stacking' };
+}
 
 // ==============================================================================
 // 1. WEBAUDIO SYNTHESIZER PARA ALERTA DE CRITICAL_BUG (SCORE >= 95)
@@ -359,13 +368,15 @@ function renderTable(highlightHash) {
       tr.className = 'new-row';
     }
 
-    const cat = categoryMap[deal.category] || { label: deal.category, class: 'badge-stacking' };
+    const cat = getCategoryInfo(deal.category);
     const priceFormatted = deal.opportunity_price.toLocaleString('pt-BR', { minimumFractionDigits: 2 });
     const refFormatted = deal.fipe_or_market_ref.toLocaleString('pt-BR', { minimumFractionDigits: 2 });
     const profitFormatted = deal.net_profit_estimate.toLocaleString('pt-BR', { maximumFractionDigits: 0 });
 
     const rawUrl = deal.source_url || '';
-    const hasValidUrl = typeof rawUrl === 'string' && (rawUrl.startsWith('http://') || rawUrl.startsWith('https://')) && !rawUrl.includes('localhost') && !rawUrl.includes('radarhub.local');
+    const hasValidUrl = (typeof window !== 'undefined' && window.SafeNavigator) 
+      ? window.SafeNavigator.isValidExternalUrl(rawUrl) 
+      : (typeof rawUrl === 'string' && (rawUrl.startsWith('http://') || rawUrl.startsWith('https://')) && !rawUrl.includes('localhost') && !rawUrl.includes('radarhub.local'));
     const safeHref = hasValidUrl ? escapeQuotes(rawUrl) : '#';
 
     tr.innerHTML = `
@@ -425,14 +436,17 @@ function handleOneClickAction(id) {
   }
 
   const rawUrl = item.source_url || item.affiliate_url || '';
-  const isValidWebUrl = typeof rawUrl === 'string' && 
-                        (rawUrl.startsWith('http://') || rawUrl.startsWith('https://')) &&
-                        !rawUrl.includes('localhost') && 
-                        !rawUrl.includes('radarhub.local');
+  const isSafeExternal = (typeof window !== 'undefined' && window.SafeNavigator)
+    ? window.SafeNavigator.isValidExternalUrl(rawUrl)
+    : (typeof rawUrl === 'string' && (rawUrl.startsWith('http://') || rawUrl.startsWith('https://')) && !rawUrl.includes('localhost') && !rawUrl.includes('radarhub.local'));
 
-  if (isValidWebUrl) {
+  if (isSafeExternal) {
     // Abre diretamente a loja/leilão em nova aba segura
-    window.open(rawUrl, '_blank', 'noopener,noreferrer');
+    if (window.SafeNavigator) {
+      window.SafeNavigator.openExternal(rawUrl);
+    } else {
+      window.open(rawUrl, '_blank', 'noopener,noreferrer');
+    }
   } else {
     // Aciona checkout interno 1-Clique PIX
     openCheckoutModal(item);
@@ -663,16 +677,55 @@ function appendLog(pipeline, message, level = 'info', durationMs = 0) {
 // ==============================================================================
 // 7. INICIALIZAÇÃO DE FILTROS, SWITCH DE SILÊNCIO E MODAIS
 // ==============================================================================
+function applyFilter(filterKey, updateUrl = true) {
+  activeFilter = filterKey || 'ALL';
+  const buttons = document.querySelectorAll('.filter-btn[data-filter]');
+  buttons.forEach(b => {
+    if (b.getAttribute('data-filter') === activeFilter) {
+      b.classList.add('active');
+    } else {
+      b.classList.remove('active');
+    }
+  });
+
+  if (updateUrl && typeof window !== 'undefined' && window.history) {
+    const url = new URL(window.location.href);
+    if (activeFilter === 'ALL') {
+      url.searchParams.delete('vertical');
+      url.searchParams.delete('filter');
+    } else {
+      url.searchParams.set('vertical', activeFilter);
+    }
+    window.history.pushState({ vertical: activeFilter }, '', url.toString());
+  }
+
+  renderTable();
+}
+
 function initFilters() {
   const buttons = document.querySelectorAll('.filter-btn[data-filter]');
   buttons.forEach(btn => {
     btn.addEventListener('click', () => {
-      buttons.forEach(b => b.classList.remove('active'));
-      btn.classList.add('active');
-      activeFilter = btn.getAttribute('data-filter') || 'ALL';
-      renderTable();
+      const filter = btn.getAttribute('data-filter') || 'ALL';
+      applyFilter(filter, true);
     });
   });
+
+  // Lê parâmetro deep link da URL se houver (ex: ?vertical=price_bug)
+  if (typeof window !== 'undefined') {
+    const params = new URLSearchParams(window.location.search);
+    const initialVertical = params.get('vertical') || params.get('filter');
+    if (initialVertical) {
+      applyFilter(initialVertical, false);
+    }
+
+    // Suporte aos botões Voltar / Avançar do navegador
+    window.addEventListener('popstate', () => {
+      const p = new URLSearchParams(window.location.search);
+      const vert = p.get('vertical') || p.get('filter') || 'ALL';
+      applyFilter(vert, false);
+    });
+  }
 }
 
 function initSilenceToggle() {

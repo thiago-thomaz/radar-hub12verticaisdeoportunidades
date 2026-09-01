@@ -8,16 +8,17 @@
  * - Suporte a Push Notifications com botões de ação (Comprar / Analisar).
  */
 
-const CACHE_NAME = 'radar-hub-cache-v1.0.0';
+const CACHE_NAME = 'radar-hub-cache-v1.1.0';
 const STATIC_ASSETS = [
-  '/dashboard/',
-  '/dashboard/index.html',
-  '/dashboard/styles.css',
-  '/dashboard/app.js',
-  '/dashboard/manifest.json',
-  '/dashboard/icons/icon-192.png',
-  '/dashboard/icons/icon-512.png',
-  '/dashboard/icons/icon.svg'
+  '/',
+  '/index.html',
+  '/styles.css',
+  '/routes.js',
+  '/app.js',
+  '/manifest.json',
+  '/icons/icon-192.png',
+  '/icons/icon-512.png',
+  '/icons/icon.svg'
 ];
 
 // 1. Instalação e Pré-cache de Recursos Essenciais

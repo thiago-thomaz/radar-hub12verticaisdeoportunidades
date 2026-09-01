@@ -110,10 +110,11 @@
     <section class="panel-box">
       <div class="table-controls">
         <h2 class="panel-title">Radar de Oportunidades em Alta (Tempo Real)</h2>
-        <div class="filter-group">
+        <div class="filter-group" id="filter-group-container">
           <button class="filter-btn active" data-filter="ALL">Todas (12 Verticais)</button>
           <button class="filter-btn" data-filter="price_bug">Bugs</button>
           <button class="filter-btn" data-filter="car_auction">Leilões Veículos</button>
+          <button class="filter-btn" data-filter="industrial_auction">Bens Industriais</button>
           <button class="filter-btn" data-filter="real_estate_local">Imóveis Bauru</button>
           <button class="filter-btn" data-filter="public_tender">Licitações PNCP</button>
           <button class="filter-btn" data-filter="expired_domain">Domínios Expirando</button>
@@ -123,6 +124,7 @@
           <button class="filter-btn" data-filter="sweepstake_promo">Sorteios SECAP</button>
           <button class="filter-btn" data-filter="miles_promo">Milhas CPM</button>
           <button class="filter-btn" data-filter="microtask_gig">Microtarefas</button>
+          <button class="filter-btn" data-filter="stacking_deal">Stacking</button>
         </div>
       </div>
 
@@ -192,6 +194,7 @@
   <!-- Toast Container for Critical Alerts -->
   <div id="toast-container" class="toast-container"></div>
 
+  <script src="routes.js"></script>
   <script src="app.js"></script>
 </body>
 </html>

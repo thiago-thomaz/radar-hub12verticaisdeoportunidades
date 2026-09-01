@@ -8,6 +8,7 @@
 
 import crypto from 'crypto';
 import dotenv from 'dotenv';
+import { URLSafetyValidator } from './routes_registry';
 
 dotenv.config();
 
@@ -145,7 +146,8 @@ export class RadarAffiliateManager {
     }
 
     const shortCode = crypto.randomBytes(4).toString('hex').substring(0, 7);
-    const shortUrl = `https://radarhub.local/r/${shortCode}`;
+    const baseUrl = process.env.BASE_URL || 'http://localhost:3000';
+    const shortUrl = `${baseUrl}/r/${shortCode}`;
 
     const record: GeneratedAffiliateLink = {
       originalUrl: targetUrl,
@@ -163,11 +165,15 @@ export class RadarAffiliateManager {
   }
 
   /**
-   * Registra clique no link encurtado e retorna a URL final de redirecionamento
+   * Registra clique no link encurtado e retorna a URL final de redirecionamento seguro
    */
   public trackAndRedirect(shortCode: string, ip?: string, ua?: string): string | null {
     const record = this.linksStore.get(shortCode);
     if (!record) return null;
+
+    if (!URLSafetyValidator.isValidExternalUrl(record.affiliateUrl)) {
+      return null;
+    }
 
     this.clicksStore.push({
       shortCode,

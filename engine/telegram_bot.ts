@@ -16,6 +16,7 @@ import * as https from 'https';
 import { UnifiedOpportunity } from './scoring';
 import { buildOneClickCheckoutTask, CheckoutResult } from './one_click_checkout';
 import { SubscriptionManager, SubscriptionRecord } from './subscription_manager';
+import { URLSafetyValidator } from './routes_registry';
 
 export interface TelegramInlineButton {
   text: string;
@@ -262,12 +263,14 @@ export class RadarTelegramBot {
       `🏢 <b>Origem / Fonte:</b> <code>${this.escapeHtml(opp.source_name)}</code>\n\n` +
       `<i>Clique nos botões de ação rápida para acessar imediatamente:</i>`;
 
-    const buyUrl = opp.affiliate_url || opp.source_url || 'https://radarhub.local';
+    const rawTarget = opp.affiliate_url || opp.source_url || '';
+    const isSafeExternal = URLSafetyValidator.isValidExternalUrl(rawTarget);
+    const buyUrl = isSafeExternal ? rawTarget : `${this.webAppUrl}/?vertical=${opp.category}`;
     const fingerprintShort = (opp.fingerprint_hash || 'hash_default').substring(0, 16);
 
     const inlineKeyboard: TelegramInlineButton[][] = [
       [
-        { text: '🛒 Comprar Agora / Acessar', url: buyUrl },
+        { text: isSafeExternal ? '🛒 Acessar Oferta Original' : '⚡ Abrir no Cockpit', url: buyUrl },
         { text: '📊 Ver Análise FIPE/ROI', callback_data: `roi_${fingerprintShort}` }
       ],
       [
