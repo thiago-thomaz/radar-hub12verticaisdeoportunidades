@@ -4,7 +4,8 @@
  * ==============================================================================
  * Conexão WebSocket bidirecional em tempo real com auto-reconexão,
  * sintetizador Web Audio API para alertas sonoros de bugs críticos (Score >= 95),
- * stream de logs ao vivo, telemetria de latência/proxies e compra em 1-clique.
+ * gerenciador inteligente de toasts (max 2 visíveis, 4s auto-dismiss, silenciador),
+ * ações de 1-Click e Módulo Jurídico LegalTech (CDC Arts. 30 e 35).
  */
 
 // Estado global em memória
@@ -12,9 +13,15 @@ let opportunities = [];
 let activeFilter = 'ALL';
 let ws = null;
 let reconnectAttempts = 0;
-let maxReconnectDelay = 10000;
+const maxReconnectDelay = 10000;
 let currentPixCode = '';
 let audioCtx = null;
+let currentLegalPack = null;
+
+// Configurações de Toasts e Silêncio
+const MAX_VISIBLE_TOASTS = 2;
+const TOAST_DURATION_MS = 4000;
+let isVisualToastsSilenced = localStorage.getItem('radar_silence_visual_toasts') === 'true';
 
 const categoryMap = {
   price_bug: { label: 'Bug de Preço', class: 'badge-bug' },
@@ -50,9 +57,9 @@ function playCriticalBugChime() {
     const osc1 = audioCtx.createOscillator();
     const gain1 = audioCtx.createGain();
     osc1.type = 'sine';
-    osc1.frequency.setValueAtTime(880, now); // A5
-    osc1.frequency.exponentialRampToValueAtTime(1320, now + 0.15); // E6
-    osc1.frequency.exponentialRampToValueAtTime(1760, now + 0.3); // A6
+    osc1.frequency.setValueAtTime(880, now);
+    osc1.frequency.exponentialRampToValueAtTime(1320, now + 0.15);
+    osc1.frequency.exponentialRampToValueAtTime(1760, now + 0.3);
     gain1.gain.setValueAtTime(0.25, now);
     gain1.gain.exponentialRampToValueAtTime(0.001, now + 0.45);
     osc1.connect(gain1);
@@ -94,7 +101,6 @@ function initWebSocket() {
       reconnectAttempts = 0;
       updateWsStatus('CONNECTED');
       appendLog('WEBSOCKET', 'Conexão em tempo real estabelecida com o servidor RADAR_HUB.', 'info');
-      // Envia PING de sincronização
       ws.send(JSON.stringify({ type: 'PING', timestamp: new Date().toISOString() }));
     };
 
@@ -165,6 +171,7 @@ function updateWsStatus(status) {
 
   if (status === 'CONNECTED') {
     dot.className = 'status-dot live';
+    dot.style.background = '';
     text.innerText = 'WEBSOCKET CONECTADO';
   } else if (status === 'CONNECTING') {
     dot.className = 'status-dot';
@@ -194,30 +201,32 @@ function updateTelemetryBadges(telemetry) {
 }
 
 // ==============================================================================
-// 3. INGESTÃO, RENDERIZAÇÃO E ALERTAS DE OPORTUNIDADES
+// 3. INGESTÃO, RENDERIZAÇÃO E GERENCIADOR DE TOASTS
 // ==============================================================================
 function ingestOpportunity(opp) {
   if (!opp) return;
 
-  // Normalização de campos
+  const rawId = opp.fingerprint_hash || opp.id || `opp_${Date.now()}_${Math.random().toString(36).substr(2, 6)}`;
+  const rawUrl = opp.affiliate_url || opp.source_url || opp.url || '';
+
   const normalized = {
-    id: opp.fingerprint_hash || `opp_${Date.now()}_${Math.random()}`,
-    category: opp.category,
-    title: opp.title,
-    opportunity_price: Number(opp.opportunity_price || 0),
-    original_price: Number(opp.original_price || opp.fipe_or_market_ref || opp.opportunity_price),
+    id: rawId,
+    category: opp.category || 'price_bug',
+    title: opp.title || 'Oportunidade Detectada',
+    opportunity_price: Number(opp.opportunity_price || opp.price || 0),
+    original_price: Number(opp.original_price || opp.fipe_or_market_ref || opp.opportunity_price || 0),
     discount_percentage: Number(opp.discount_percentage || 0),
     net_profit_estimate: Number(opp.net_profit_estimate || 0),
-    fipe_or_market_ref: Number(opp.fipe_or_market_ref || opp.original_price || opp.opportunity_price),
-    evaluation_score: Number(opp.evaluation_score || 0),
-    priority: opp.priority || 'NORMAL',
-    source_name: opp.source_name || 'RADAR_HUB',
-    source_url: opp.affiliate_url || opp.source_url || '#',
-    fingerprint_hash: opp.fingerprint_hash
+    fipe_or_market_ref: Number(opp.fipe_or_market_ref || opp.original_price || opp.opportunity_price || 0),
+    evaluation_score: Number(opp.evaluation_score || opp.score || 0),
+    priority: opp.priority || (opp.evaluation_score >= 95 ? 'CRITICAL_BUG' : 'NORMAL'),
+    source_name: opp.source_name || opp.sourceName || 'RADAR_HUB',
+    source_url: rawUrl,
+    fingerprint_hash: opp.fingerprint_hash || rawId
   };
 
   // Anti-duplicação na lista local
-  const existingIdx = opportunities.findIndex(o => o.fingerprint_hash && o.fingerprint_hash === normalized.fingerprint_hash);
+  const existingIdx = opportunities.findIndex(o => o.id === normalized.id || (o.fingerprint_hash && o.fingerprint_hash === normalized.fingerprint_hash));
   if (existingIdx >= 0) {
     opportunities[existingIdx] = normalized;
   } else {
@@ -235,9 +244,39 @@ function ingestOpportunity(opp) {
   renderTable(normalized.fingerprint_hash);
 }
 
+/**
+ * Remove um toast do DOM com animação suave de slide-out
+ */
+function dismissToast(toastEl) {
+  if (!toastEl || toastEl.classList.contains('toast-exit')) return;
+  if (toastEl._dismissTimer) {
+    clearTimeout(toastEl._dismissTimer);
+    toastEl._dismissTimer = null;
+  }
+  toastEl.classList.add('toast-exit');
+  setTimeout(() => {
+    if (toastEl.parentNode) {
+      toastEl.remove();
+    }
+  }, 350);
+}
+
+/**
+ * Exibe toast flutuante respeitando o limite de 2 visíveis e auto-dismiss de 4s
+ */
 function showCriticalToast(opp) {
+  if (isVisualToastsSilenced) return;
+
   const container = document.getElementById('toast-container');
   if (!container) return;
+
+  // Limite estrito de no máximo 2 toasts visíveis simultaneamente
+  const currentActiveToasts = Array.from(container.querySelectorAll('.toast-alert:not(.toast-exit)'));
+  if (currentActiveToasts.length >= MAX_VISIBLE_TOASTS) {
+    // Remove o toast mais antigo imediatamente com slideOut suave
+    const oldest = currentActiveToasts[0];
+    dismissToast(oldest);
+  }
 
   const toast = document.createElement('div');
   toast.className = 'toast-alert';
@@ -246,35 +285,39 @@ function showCriticalToast(opp) {
   const profitFormatted = opp.net_profit_estimate.toLocaleString('pt-BR', { minimumFractionDigits: 2 });
 
   toast.innerHTML = `
-    <div style="font-size: 1.8rem; animation: pulse 1s infinite;">🚨</div>
-    <div style="flex: 1;">
-      <div style="display: flex; align-items: center; gap: 0.5rem; margin-bottom: 0.25rem;">
-        <span class="badge badge-bug">BUG CRÍTICO (${opp.evaluation_score}/100)</span>
-        <span style="font-size: 0.75rem; color: var(--text-muted);">${opp.source_name}</span>
+    <div style="font-size: 1.6rem; animation: pulse 1s infinite; flex-shrink: 0;">🚨</div>
+    <div style="flex: 1; min-width: 0;">
+      <div style="display: flex; align-items: center; justify-content: space-between; gap: 0.5rem; margin-bottom: 0.2rem;">
+        <span class="badge badge-bug" style="font-size: 0.68rem;">BUG (${opp.evaluation_score}/100)</span>
+        <span style="font-size: 0.72rem; color: var(--text-muted); text-overflow: ellipsis; overflow: hidden; white-space: nowrap;">${escapeHtml(opp.source_name)}</span>
       </div>
-      <div style="font-weight: 700; font-size: 0.95rem; margin-bottom: 0.25rem; color: #fff;">${opp.title}</div>
-      <div style="font-size: 0.85rem; color: var(--accent-green);">
-        <strong>R$ ${priceFormatted}</strong> ${opp.discount_percentage > 0 ? `(${opp.discount_percentage}% OFF)` : ''} 
-        • Lucro Est.: <strong>R$ ${profitFormatted}</strong>
+      <div style="font-weight: 700; font-size: 0.88rem; margin-bottom: 0.2rem; color: #fff; text-overflow: ellipsis; overflow: hidden; white-space: nowrap;" title="${escapeHtml(opp.title)}">${escapeHtml(opp.title)}</div>
+      <div style="font-size: 0.8rem; color: var(--accent-green);">
+        <strong>R$ ${priceFormatted}</strong> ${opp.discount_percentage > 0 ? `(${opp.discount_percentage.toFixed(0)}% OFF)` : ''} 
+        • Lucro: <strong>R$ ${profitFormatted}</strong>
       </div>
     </div>
-    <div style="display: flex; flex-direction: column; gap: 0.35rem;">
-      <button class="btn-action btn-buy" onclick="triggerOneClickBuy('${opp.id}', '${escapeQuotes(opp.title)}', ${opp.opportunity_price})">⚡ 1-Click</button>
-      <button class="filter-btn" style="padding: 0.25rem 0.5rem; font-size: 0.7rem;" onclick="this.closest('.toast-alert').remove()">✕ Fechar</button>
+    <div style="display: flex; flex-direction: column; gap: 0.35rem; align-items: flex-end; flex-shrink: 0;">
+      <button class="toast-close-btn" aria-label="Fechar" title="Fechar">✕</button>
+      <button class="btn-action btn-buy" style="padding: 0.35rem 0.65rem; font-size: 0.75rem;" onclick="handleOneClickAction('${opp.id}')">⚡ 1-Click</button>
     </div>
   `;
 
+  // Listener para o botão fechar do toast
+  const closeBtn = toast.querySelector('.toast-close-btn');
+  if (closeBtn) {
+    closeBtn.addEventListener('click', (e) => {
+      e.stopPropagation();
+      dismissToast(toast);
+    });
+  }
+
   container.appendChild(toast);
 
-  // Auto-remove após 12 segundos
-  setTimeout(() => {
-    if (toast.parentNode) {
-      toast.style.opacity = '0';
-      toast.style.transform = 'translateX(100%)';
-      toast.style.transition = 'all 0.4s ease';
-      setTimeout(() => toast.remove(), 400);
-    }
-  }, 12000);
+  // Auto-dismiss em exatamente 4 segundos
+  toast._dismissTimer = setTimeout(() => {
+    dismissToast(toast);
+  }, TOAST_DURATION_MS);
 }
 
 function updateMetrics() {
@@ -312,7 +355,7 @@ function renderTable(highlightHash) {
 
   filtered.forEach(deal => {
     const tr = document.createElement('tr');
-    if (deal.fingerprint_hash === highlightHash) {
+    if (deal.fingerprint_hash === highlightHash || deal.id === highlightHash) {
       tr.className = 'new-row';
     }
 
@@ -321,11 +364,19 @@ function renderTable(highlightHash) {
     const refFormatted = deal.fipe_or_market_ref.toLocaleString('pt-BR', { minimumFractionDigits: 2 });
     const profitFormatted = deal.net_profit_estimate.toLocaleString('pt-BR', { maximumFractionDigits: 0 });
 
+    const rawUrl = deal.source_url || '';
+    const hasValidUrl = typeof rawUrl === 'string' && (rawUrl.startsWith('http://') || rawUrl.startsWith('https://')) && !rawUrl.includes('localhost') && !rawUrl.includes('radarhub.local');
+    const safeHref = hasValidUrl ? escapeQuotes(rawUrl) : '#';
+
     tr.innerHTML = `
       <td><span class="badge ${cat.class}">${cat.label}</span></td>
       <td style="font-weight: 600;">
-        <div>${deal.title}</div>
-        <div style="font-size: 0.75rem; color: var(--text-muted);">${deal.source_name}</div>
+        <div>
+          <a href="${safeHref}" class="opp-title-link" data-id="${deal.id}" title="${escapeHtml(deal.title)}">
+            ${escapeHtml(deal.title)}
+          </a>
+        </div>
+        <div style="font-size: 0.75rem; color: var(--text-muted);">${escapeHtml(deal.source_name)}</div>
       </td>
       <td style="color: var(--accent-green); font-weight: 700;">R$ ${priceFormatted}</td>
       <td style="color: var(--text-muted); text-decoration: ${deal.discount_percentage > 0 ? 'line-through' : 'none'};">R$ ${refFormatted}</td>
@@ -338,64 +389,214 @@ function renderTable(highlightHash) {
       </td>
       <td><span class="badge" style="background: rgba(16,185,129,0.15); color: var(--accent-green);">Ativa</span></td>
       <td>
-        <div style="display: flex; gap: 0.25rem;">
-          <button class="btn-action btn-buy" onclick="triggerOneClickBuy('${deal.id}', '${escapeQuotes(deal.title)}', ${deal.opportunity_price})">⚡ 1-Click</button>
-          <button class="btn-action" style="background: rgba(0, 242, 254, 0.15); border: 1px solid var(--accent-cyan); color: var(--accent-cyan);" onclick="triggerLegalDoc('${escapeQuotes(deal.title)}', ${deal.opportunity_price}, ${deal.fipe_or_market_ref}, '${escapeQuotes(deal.source_name)}')">⚖️ CDC</button>
+        <div style="display: flex; gap: 0.35rem;">
+          <button class="btn-action btn-buy" onclick="handleOneClickAction('${deal.id}')" title="Acessar oferta ou comprar em 1-clique">⚡ 1-Click</button>
+          <button class="btn-action" style="background: rgba(0, 242, 254, 0.15); border: 1px solid var(--accent-cyan); color: var(--accent-cyan);" onclick="triggerLegalDocById('${deal.id}')" title="Gerar Notificação Extrajudicial e Petição JEC Art. 35">⚖️ CDC</button>
         </div>
       </td>
     `;
+
+    // Intercepta clique no título caso URL não seja externa
+    const linkEl = tr.querySelector('.opp-title-link');
+    if (linkEl) {
+      linkEl.addEventListener('click', (e) => {
+        if (!hasValidUrl) {
+          e.preventDefault();
+          handleOneClickAction(deal.id);
+        } else {
+          linkEl.target = '_blank';
+          linkEl.rel = 'noopener noreferrer';
+        }
+      });
+    }
+
     tbody.appendChild(tr);
   });
 }
 
 // ==============================================================================
-// 4. STREAM DE LOGS AO VIVO & MODAL JURÍDICO LEGALTECH
+// 4. AÇÃO RÁPIDA 1-CLICK (REDIRECIONAMENTO EXTERNO OU CHECKOUT PIX)
 // ==============================================================================
-let currentLegalPack = null;
+function handleOneClickAction(id) {
+  const item = opportunities.find(o => o.id === id || o.fingerprint_hash === id);
+  if (!item) {
+    console.warn('Oportunidade não encontrada para 1-Click:', id);
+    return;
+  }
 
-function triggerLegalDoc(title, advertisedPrice, marketPrice, storeName) {
+  const rawUrl = item.source_url || item.affiliate_url || '';
+  const isValidWebUrl = typeof rawUrl === 'string' && 
+                        (rawUrl.startsWith('http://') || rawUrl.startsWith('https://')) &&
+                        !rawUrl.includes('localhost') && 
+                        !rawUrl.includes('radarhub.local');
+
+  if (isValidWebUrl) {
+    // Abre diretamente a loja/leilão em nova aba segura
+    window.open(rawUrl, '_blank', 'noopener,noreferrer');
+  } else {
+    // Aciona checkout interno 1-Clique PIX
+    openCheckoutModal(item);
+  }
+}
+
+function openCheckoutModal(item) {
+  const modal = document.getElementById('checkout-modal');
+  const modalTitle = document.getElementById('modal-title');
+  const modalPrice = document.getElementById('modal-price');
+  const modalQr = document.getElementById('modal-qr');
+
+  const price = Number(item.opportunity_price || 0);
+  currentPixCode = `00020126580014BR.GOV.BCB.PIX0136RADAR_HUB_${item.id || 'ORDER'}5204000053039865405${price.toFixed(2)}5802BR5915RADAR_HUB6009SAO_PAULO62070503***6304ABCD`;
+
+  if (modalTitle) modalTitle.innerText = `⚡ Compra / Reserva 1-Clique: ${item.title}`;
+  if (modalPrice) modalPrice.innerText = `Valor / Custo: R$ ${price.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}`;
+  if (modalQr) modalQr.src = `https://api.qrserver.com/v1/create-qr-code/?size=250x250&data=${encodeURIComponent(currentPixCode)}`;
+
+  if (modal) modal.classList.add('show');
+}
+
+function closeModal() {
+  const modal = document.getElementById('checkout-modal');
+  if (modal) modal.classList.remove('show');
+}
+
+function copyPixCode() {
+  if (navigator.clipboard && currentPixCode) {
+    navigator.clipboard.writeText(currentPixCode);
+    alert('Código PIX Copia e Cola copiado com sucesso!');
+  }
+}
+
+// ==============================================================================
+// 5. MÓDULO JURÍDICO LEGALTECH (CDC ARTS. 30/35 & JEC)
+// ==============================================================================
+function triggerLegalDocById(id) {
+  const deal = opportunities.find(o => o.id === id || o.fingerprint_hash === id);
+  if (!deal) {
+    console.warn('Oportunidade não encontrada para geração jurídica:', id);
+    return;
+  }
+
+  const title = deal.title || 'Produto Oferta RADAR_HUB';
+  const advertisedPrice = Number(deal.opportunity_price || 0);
+  const marketPrice = Number(deal.fipe_or_market_ref || deal.original_price || (advertisedPrice * 2));
+  const storeName = deal.source_name || 'E-commerce Oficial';
+
+  const metaEl = document.getElementById('legal-modal-meta');
+  if (metaEl) {
+    metaEl.innerText = `📦 ${title} | Oferta: R$ ${advertisedPrice.toFixed(2)} | Mercado: R$ ${marketPrice.toFixed(2)} | Loja: ${storeName}`;
+  }
+
+  // Define minuta instantânea local para garantir exibição imediata
+  currentLegalPack = generateFallbackLegalDocuments(deal, title, advertisedPrice, marketPrice, storeName);
+  switchLegalTab('notice');
+
   const modal = document.getElementById('legal-modal');
-  const payload = {
-    consumer: {
-      name: 'Consumidor Modelo',
-      cpf: '123.456.789-00',
-      email: 'consumidor@radarhub.com',
-      phone: '(14) 99876-5432',
-      address: 'Rua Rio Branco, nº 100, Centro',
-      city: 'Bauru',
-      state: 'SP',
-      cep: '17010-000'
-    },
-    merchant: {
-      storeName: storeName || 'E-commerce Oficial',
-      cnpj: '00.000.000/0001-91'
-    },
-    dispute: {
-      orderNumber: `ORD-${Date.now().toString().slice(-6)}`,
-      orderDate: new Date().toLocaleDateString('pt-BR'),
-      productTitle: title,
-      advertisedPrice: Number(advertisedPrice) || 99.90,
-      marketReferencePrice: Number(marketPrice) || (Number(advertisedPrice) * 2),
-      paymentMethod: 'PIX',
-      cancelDate: new Date().toLocaleDateString('pt-BR'),
-      cancelReasonText: 'Cancelamento unilateral por alegado erro de precificação sistêmica'
-    }
-  };
+  if (modal) modal.classList.add('show');
 
+  // Envia requisição para obter minuta enriquecida do servidor
   fetch('/api/legal/generate-notice', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify(payload)
+    body: JSON.stringify({
+      consumer: {
+        name: 'Consumidor Adquirente',
+        cpf: '000.000.000-00',
+        email: 'consumidor@radarhub.com',
+        phone: '(11) 99999-9999',
+        address: 'Rua das Flores, nº 100',
+        city: 'São Paulo',
+        state: 'SP',
+        cep: '01001-000'
+      },
+      merchant: {
+        storeName: storeName,
+        cnpj: '00.000.000/0001-91'
+      },
+      dispute: {
+        orderNumber: `ORD-${Date.now().toString().slice(-6)}`,
+        orderDate: new Date().toLocaleDateString('pt-BR'),
+        productTitle: title,
+        advertisedPrice: advertisedPrice,
+        marketReferencePrice: marketPrice,
+        paymentMethod: 'PIX',
+        cancelDate: new Date().toLocaleDateString('pt-BR'),
+        cancelReasonText: 'Cancelamento unilateral sob alegação de erro sistêmico na oferta veiculada'
+      }
+    })
   })
     .then(r => r.json())
     .then(res => {
       if (res.success && res.documents) {
         currentLegalPack = res.documents;
-        switchLegalTab('notice');
-        if (modal) modal.classList.add('show');
+        const isJecActive = document.getElementById('btn-tab-jec')?.classList.contains('active');
+        switchLegalTab(isJecActive ? 'jec' : 'notice');
       }
     })
-    .catch(err => alert('Erro ao gerar minuta jurídica: ' + err.message));
+    .catch(err => {
+      console.warn('[LegalTech] Utilizando minuta fundamentada local:', err);
+    });
+}
+
+function generateFallbackLegalDocuments(deal, title, advertisedPrice, marketPrice, storeName) {
+  const diffPrice = (marketPrice - advertisedPrice).toFixed(2);
+  const dateStr = new Date().toLocaleDateString('pt-BR');
+
+  const noticeText = `NOTIFICAÇÃO EXTRAJUDICIAL — PRAZO IMPRORROGÁVEL DE 48 HORAS
+CUMPRIMENTO FORÇADO DE OFERTA PÚBLICA (ARTS. 30 E 35 DO CDC)
+
+À EMPRESA: ${storeName}
+REF.: PEDIDO DE COMPRA / ANÚNCIO: "${title}"
+DATA DO ANÚNCIO/COMPRA: ${dateStr}
+VALOR DA OFERTA VEICULADA: R$ ${advertisedPrice.toFixed(2)}
+VALOR DE MERCADO DE REFERÊNCIA: R$ ${marketPrice.toFixed(2)}
+
+I. DOS FATOS E FUNDAMENTAÇÃO JURÍDICA
+O Notificante adquiriu/tentou adquirir o produto acima referenciado, veiculado publicamente pela Notificada.
+Conforme dispõe o Artigo 30 do Código de Defesa do Consumidor (Lei nº 8.078/90):
+"Toda informação ou publicidade, suficientemente precisa, veiculada por qualquer forma ou meio de comunicação com relação a produtos e serviços oferecidos ou apresentados, obriga o fornecedor que a fizer veicular ou dela se utilizar e integra o contrato que vier a ser celebrado."
+
+Ademais, o Artigo 35, inciso I, do CDC assegura ao consumidor a prerrogativa incontestável de:
+"I - exigir o cumprimento forçado da obrigação, nos termos da oferta, apresentação ou publicidade;"
+
+II. DO REQUERIMENTO
+Requer-se o cumprimento forçado da oferta com o envio imediato do produto no valor anunciado de R$ ${advertisedPrice.toFixed(2)}, no prazo de 48 (quarenta e oito) horas.
+Na inércia ou recusa, será proposta incontinenti Ação de Obrigação de Fazer cumulada com Danos Morais perante o Juizado Especial Cível competente.
+
+Local e Data: ${dateStr}
+Consumidor Notificante`;
+
+  const jecText = `EXCELENTÍSSIMO(A) SENHOR(A) DOUTOR(A) JUIZ(A) DE DIREITO DO JUIZADO ESPECIAL CÍVEL
+
+AUTOR: Consumidor Adquirente, brasileiro, inscrito no CPF sob nº 000.000.000-00
+RÉU: ${storeName}, pessoa jurídica de direito privado
+
+AÇÃO DE OBRIGAÇÃO DE FAZER C/C PEDIDO DE CUMPRIMENTO FORÇADO DE OFERTA (ARTS. 30 E 35, I, CDC)
+
+I. DOS FATOS
+O Autor visualizou e adquiriu a oferta veiculada pela Ré referente ao produto:
+"${title}", pelo valor anunciado de R$ ${advertisedPrice.toFixed(2)} (valor referencial de mercado: R$ ${marketPrice.toFixed(2)}).
+Injustificadamente, a Ré procedeu ao cancelamento unilateral do pedido alegando suposto erro grosseiro.
+Contudo, no comércio eletrônico massificado e dinâmico, ofertas promocionais agressivas são praxe comercial, vinculando a fornecedora ao cumprimento da promessa de venda.
+
+II. DO DIREITO
+Incidência expressa do Art. 30 e Art. 35, I, da Lei 8.078/90. O cancelamento arbitrário enseja dever de cumprimento forçado e reparação moral pelo tempo útil desperdiçado (Teoria do Desvio Produtivo do Consumidor).
+
+III. DOS PEDIDOS
+1. A citação da Ré;
+2. A procedência total dos pedidos para CONDENAR a Ré ao cumprimento forçado da oferta, entregando o produto adquirido;
+3. Subsidiariamente, a conversão em perdas e danos no valor de mercado correspondente (R$ ${marketPrice.toFixed(2)});
+4. Condenação em indenização por danos morais no valor de R$ 3.000,00.
+
+Dá-se à causa o valor de R$ ${(marketPrice + 3000).toFixed(2)}.
+
+Termos em que pede deferimento.
+Data: ${dateStr}`;
+
+  return {
+    extrajudicialNoticeText: noticeText,
+    jecPetitionMarkdown: jecText
+  };
 }
 
 function switchLegalTab(tab) {
@@ -407,11 +608,11 @@ function switchLegalTab(tab) {
   if (tab === 'notice') {
     if (btnNotice) btnNotice.classList.add('active');
     if (btnJec) btnJec.classList.remove('active');
-    txtArea.value = currentLegalPack.extrajudicialNoticeText;
+    txtArea.value = currentLegalPack.extrajudicialNoticeText || currentLegalPack.extrajudicialNoticeMarkdown || '';
   } else {
     if (btnNotice) btnNotice.classList.remove('active');
     if (btnJec) btnJec.classList.add('active');
-    txtArea.value = currentLegalPack.jecPetitionMarkdown;
+    txtArea.value = currentLegalPack.jecPetitionMarkdown || currentLegalPack.jecPetitionText || '';
   }
 }
 
@@ -424,9 +625,13 @@ function copyLegalText() {
   const txtArea = document.getElementById('legal-doc-content');
   if (txtArea && txtArea.value) {
     navigator.clipboard.writeText(txtArea.value);
-    alert('Minuta jurídica copiada para a área de transferência!');
+    alert('Minuta jurídica copiada com sucesso para a área de transferência!');
   }
 }
+
+// ==============================================================================
+// 6. STREAM DE LOGS AO VIVO
+// ==============================================================================
 let logCounter = 0;
 
 function appendLog(pipeline, message, level = 'info', durationMs = 0) {
@@ -448,7 +653,6 @@ function appendLog(pipeline, message, level = 'info', durationMs = 0) {
 
   feed.appendChild(entry);
   
-  // Limita a 100 entradas no feed do DOM
   while (feed.children.length > 100) {
     feed.removeChild(feed.firstChild);
   }
@@ -457,10 +661,10 @@ function appendLog(pipeline, message, level = 'info', durationMs = 0) {
 }
 
 // ==============================================================================
-// 5. FILTROS & CHECKOUT MODAL PIX
+// 7. INICIALIZAÇÃO DE FILTROS, SWITCH DE SILÊNCIO E MODAIS
 // ==============================================================================
 function initFilters() {
-  const buttons = document.querySelectorAll('.filter-btn');
+  const buttons = document.querySelectorAll('.filter-btn[data-filter]');
   buttons.forEach(btn => {
     btn.addEventListener('click', () => {
       buttons.forEach(b => b.classList.remove('active'));
@@ -471,31 +675,39 @@ function initFilters() {
   });
 }
 
-function triggerOneClickBuy(id, title, price) {
-  const modal = document.getElementById('checkout-modal');
-  const modalTitle = document.getElementById('modal-title');
-  const modalPrice = document.getElementById('modal-price');
-  const modalQr = document.getElementById('modal-qr');
-
-  currentPixCode = `00020126580014BR.GOV.BCB.PIX0136RADAR_HUB_${id}5204000053039865405${Number(price).toFixed(2)}5802BR5915RADAR_HUB6009SAO_PAULO62070503***6304ABCD`;
-
-  if (modalTitle) modalTitle.innerText = `⚡ Compra / Reserva 1-Clique: ${title}`;
-  if (modalPrice) modalPrice.innerText = `Valor / Custo: R$ ${Number(price).toLocaleString('pt-BR', { minimumFractionDigits: 2 })}`;
-  if (modalQr) modalQr.src = `https://api.qrserver.com/v1/create-qr-code/?size=250x250&data=${encodeURIComponent(currentPixCode)}`;
-
-  if (modal) modal.classList.add('show');
-}
-
-function closeModal() {
-  const modal = document.getElementById('checkout-modal');
-  if (modal) modal.classList.remove('show');
-}
-
-function copyPixCode() {
-  if (navigator.clipboard && currentPixCode) {
-    navigator.clipboard.writeText(currentPixCode);
-    alert('Código PIX Copia e Cola copiado para a área de transferência!');
+function initSilenceToggle() {
+  const toggleInput = document.getElementById('toggle-silence-toasts');
+  if (toggleInput) {
+    toggleInput.checked = isVisualToastsSilenced;
+    toggleInput.addEventListener('change', (e) => {
+      isVisualToastsSilenced = e.target.checked;
+      localStorage.setItem('radar_silence_visual_toasts', isVisualToastsSilenced ? 'true' : 'false');
+      
+      if (isVisualToastsSilenced) {
+        // Limpa toasts em tela ao silenciar
+        const container = document.getElementById('toast-container');
+        if (container) container.innerHTML = '';
+      }
+    });
   }
+}
+
+function initModalBackdropClicks() {
+  document.querySelectorAll('.modal-backdrop').forEach(modal => {
+    modal.addEventListener('click', (e) => {
+      if (e.target === modal) {
+        modal.classList.remove('show');
+      }
+    });
+  });
+
+  // Fecha modais com a tecla ESC
+  document.addEventListener('keydown', (e) => {
+    if (e.key === 'Escape') {
+      closeModal();
+      closeLegalModal();
+    }
+  });
 }
 
 // Utilitários de escape
@@ -504,26 +716,27 @@ function escapeHtml(text) {
   return String(text)
     .replace(/&/g, '&amp;')
     .replace(/</g, '&lt;')
-    .replace(/>/g, '&gt;');
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#039;');
 }
 
 function escapeQuotes(text) {
   if (!text) return '';
-  return String(text).replace(/'/g, "\\'");
+  return String(text).replace(/'/g, "\\'").replace(/"/g, '&quot;');
 }
 
 // ==============================================================================
-// 6. PROGRESSIVE WEB APP (PWA) & REGISTRO DE SERVICE WORKER
+// 8. PROGRESSIVE WEB APP (PWA) & REGISTRO DE SERVICE WORKER
 // ==============================================================================
 let deferredInstallPrompt = null;
 
 function initPWA() {
-  // 1. Registro do Service Worker
   if ('serviceWorker' in navigator) {
     window.addEventListener('load', () => {
       navigator.serviceWorker.register('/sw.js')
         .then((reg) => {
-          console.log('[PWA] Service Worker registrado com sucesso! Escopo:', reg.scope);
+          console.log('[PWA] Service Worker registrado! Escopo:', reg.scope);
           appendLog('PWA', 'Service Worker ativo com cache Stale-While-Revalidate.', 'info');
         })
         .catch((err) => {
@@ -532,7 +745,6 @@ function initPWA() {
     });
   }
 
-  // 2. Banner e Prompt de Instalação PWA
   const btnInstall = document.getElementById('btn-pwa-install');
   window.addEventListener('beforeinstallprompt', (e) => {
     e.preventDefault();
@@ -542,8 +754,7 @@ function initPWA() {
       btnInstall.onclick = async () => {
         if (deferredInstallPrompt) {
           deferredInstallPrompt.prompt();
-          const { outcome } = await deferredInstallPrompt.userChoice;
-          console.log('[PWA] Escolha do usuário na instalação:', outcome);
+          await deferredInstallPrompt.userChoice;
           deferredInstallPrompt = null;
           btnInstall.style.display = 'none';
         }
@@ -552,12 +763,10 @@ function initPWA() {
   });
 
   window.addEventListener('appinstalled', () => {
-    console.log('[PWA] Aplicativo RADAR_HUB instalado com sucesso!');
     if (btnInstall) btnInstall.style.display = 'none';
     appendLog('PWA', 'Aplicativo instalado na tela inicial.', 'info');
   });
 
-  // 3. Gerenciamento de Notificações Web Push
   const btnPush = document.getElementById('btn-push-subscribe');
   if (btnPush) {
     btnPush.onclick = async () => {
@@ -573,7 +782,6 @@ function initPWA() {
           btnPush.style.borderColor = 'var(--accent-green)';
           btnPush.style.color = 'var(--accent-green)';
 
-          // Simula ou registra subscription com o backend
           const fakeSub = {
             endpoint: `https://fcm.googleapis.com/fcm/send/radar_${Date.now()}`,
             keys: {
@@ -586,7 +794,7 @@ function initPWA() {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify(fakeSub)
-          }).then(r => r.json()).then(res => {
+          }).then(r => r.json()).then(() => {
             appendLog('PUSH', 'Dispositivo registrado com sucesso para alertas de bugs críticos.', 'info');
           }).catch(() => {});
 
@@ -604,10 +812,11 @@ function initPWA() {
 // Inicialização ao carregar a página
 document.addEventListener('DOMContentLoaded', () => {
   initFilters();
+  initSilenceToggle();
+  initModalBackdropClicks();
   initWebSocket();
   initPWA();
   
-  // Tentar desbloquear AudioContext com interação do usuário
   document.addEventListener('click', () => {
     if (audioCtx && audioCtx.state === 'suspended') {
       audioCtx.resume();

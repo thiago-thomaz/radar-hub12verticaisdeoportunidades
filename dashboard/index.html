@@ -36,6 +36,12 @@
       <button class="filter-btn" id="btn-push-subscribe" style="background: rgba(56, 239, 125, 0.15); border-color: var(--accent-green); color: var(--accent-green);">
         🔔 Ativar Notificações Push
       </button>
+      <!-- Switch Silenciar Alertas Visuais -->
+      <label class="silence-toggle" id="silence-toggle-wrap" title="Silenciar alertas flutuantes na tela">
+        <input type="checkbox" id="toggle-silence-toasts">
+        <span class="toggle-slider"></span>
+        <span class="toggle-text">🔕 Silenciar Alertas</span>
+      </label>
       <div class="system-status" id="ws-status-badge">
         <span class="status-dot live" id="ws-dot"></span>
         <span id="ws-status-text">WEBSOCKET CONECTADO</span>
@@ -145,6 +151,7 @@
   <!-- One-Click Buy Modal -->
   <div class="modal-backdrop" id="checkout-modal">
     <div class="modal-box">
+      <button class="modal-close-icon" onclick="closeModal()" aria-label="Fechar">×</button>
       <h3 style="font-size: 1.25rem; font-weight: 800; margin-bottom: 0.5rem;" id="modal-title">Compra em 1-Clique</h3>
       <p style="font-size: 0.85rem; color: var(--text-muted); margin-bottom: 1.25rem;">Carrinho blindado automaticamente pelo worker. Conclua via PIX abaixo.</p>
       
@@ -163,20 +170,21 @@
 
   <!-- LegalTech Modal (Notificação Extrajudicial & Petição JEC) -->
   <div class="modal-backdrop" id="legal-modal">
-    <div class="modal-box" style="max-width: 650px; text-align: left;">
-      <h3 style="font-size: 1.25rem; font-weight: 800; margin-bottom: 0.5rem; color: var(--accent-cyan);" id="legal-modal-title">⚖️ Módulo Jurídico LegalTech — Cumprimento Forçado de Oferta (CDC Art. 30/35)</h3>
-      <p style="font-size: 0.85rem; color: var(--text-muted); margin-bottom: 1rem;">Minutas jurídicas fundamentadas geradas para exigir a entrega do produto ou indenização no JEC.</p>
+    <div class="modal-box" style="max-width: 680px; text-align: left;">
+      <button class="modal-close-icon" onclick="closeLegalModal()" aria-label="Fechar">×</button>
+      <h3 style="font-size: 1.25rem; font-weight: 800; margin-bottom: 0.35rem; color: var(--accent-cyan);" id="legal-modal-title">⚖️ Módulo Jurídico LegalTech — Cumprimento Forçado de Oferta (CDC Art. 30/35)</h3>
+      <p style="font-size: 0.82rem; color: var(--text-muted); margin-bottom: 0.75rem;" id="legal-modal-meta">Carregando dados da oportunidade...</p>
       
       <div style="display: flex; gap: 0.5rem; margin-bottom: 0.75rem;">
         <button class="filter-btn active" id="btn-tab-notice" onclick="switchLegalTab('notice')">Notificação Extrajudicial (48h)</button>
-        <button class="filter-btn" id="btn-tab-jec" onclick="switchLegalTab('jec')">Petição Inicial JEC (Sem Advogado)</button>
+        <button class="filter-btn" id="btn-tab-jec" onclick="switchLegalTab('jec')">Petição Inicial JEC (Art. 35 CDC)</button>
       </div>
 
-      <textarea id="legal-doc-content" readonly style="width: 100%; height: 260px; background: rgba(0,0,0,0.5); color: #e2e8f0; font-family: monospace; font-size: 0.75rem; border: 1px solid var(--border-color); border-radius: 8px; padding: 0.75rem; resize: none;"></textarea>
+      <textarea id="legal-doc-content" readonly style="width: 100%; height: 260px; background: rgba(0,0,0,0.5); color: #e2e8f0; font-family: monospace; font-size: 0.75rem; border: 1px solid var(--border-subtle); border-radius: 8px; padding: 0.75rem; resize: none;"></textarea>
 
       <div style="display: flex; gap: 0.5rem; justify-content: flex-end; margin-top: 1rem;">
         <button class="filter-btn" onclick="closeLegalModal()">Fechar</button>
-        <button class="btn-action btn-buy" onclick="copyLegalText()">📋 Copiar Texto Completo</button>
+        <button class="btn-action btn-buy" onclick="copyLegalText()">📋 Copiar Minuta</button>
       </div>
     </div>
   </div>
