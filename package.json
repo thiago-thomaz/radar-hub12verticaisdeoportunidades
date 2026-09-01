@@ -21,6 +21,8 @@
     "test:voice-broadcast": "tsx scripts/test_audio_and_broadcast.ts",
     "test:pdf-social": "tsx scripts/test_pdf_and_social.ts",
     "test:navigation": "tsx scripts/test_navigation_and_routes.ts",
+    "test:contract": "tsx scripts/test_vertical_contract.ts",
+    "test:e2e-real": "tsx scripts/e2e_real_navigation.ts",
     "db:backup": "tsx scripts/backup/db_backup.ts",
     "db:restore": "tsx scripts/backup/db_restore.ts",
     "audit:production": "tsx scripts/audit_production_readiness.ts",
@@ -40,6 +42,7 @@
     "@types/node": "^20.14.9",
     "@types/pg": "^8.11.6",
     "@types/ws": "^8.5.10",
+    "puppeteer": "^25.9.0",
     "tsx": "^4.16.2",
     "typescript": "^5.5.3"
   }

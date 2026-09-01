@@ -148,6 +148,12 @@ function handleServerEvent(msg) {
       appendLog('SERVER', payload.message || 'Stream conectado.', 'info');
       break;
 
+    case 'INITIAL_OPPORTUNITIES':
+      if (Array.isArray(payload)) {
+        ingestBatch(payload);
+      }
+      break;
+
     case 'NEW_OPPORTUNITY':
       ingestOpportunity(payload);
       break;
@@ -251,6 +257,49 @@ function ingestOpportunity(opp) {
 
   updateMetrics();
   renderTable(normalized.fingerprint_hash);
+}
+
+/**
+ * Ingestão em lote para sincronização inicial e snapshots
+ */
+function ingestBatch(list) {
+  if (!Array.isArray(list)) return;
+
+  list.forEach(opp => {
+    if (!opp) return;
+    const rawId = opp.fingerprint_hash || opp.id || `opp_${Date.now()}_${Math.random().toString(36).substr(2, 6)}`;
+    const rawUrl = opp.affiliate_url || opp.source_url || opp.url || '';
+
+    const normalized = {
+      id: rawId,
+      category: opp.category || 'price_bug',
+      title: opp.title || 'Oportunidade Detectada',
+      opportunity_price: Number(opp.opportunity_price || opp.price || 0),
+      original_price: Number(opp.original_price || opp.fipe_or_market_ref || opp.opportunity_price || 0),
+      discount_percentage: Number(opp.discount_percentage || 0),
+      net_profit_estimate: Number(opp.net_profit_estimate || 0),
+      fipe_or_market_ref: Number(opp.fipe_or_market_ref || opp.original_price || opp.opportunity_price || 0),
+      evaluation_score: Number(opp.evaluation_score || opp.score || 0),
+      priority: opp.priority || (opp.evaluation_score >= 95 ? 'CRITICAL_BUG' : 'NORMAL'),
+      source_name: opp.source_name || opp.sourceName || 'RADAR_HUB',
+      source_url: rawUrl,
+      fingerprint_hash: opp.fingerprint_hash || rawId
+    };
+
+    const existingIdx = opportunities.findIndex(o => o.id === normalized.id || (o.fingerprint_hash && o.fingerprint_hash === normalized.fingerprint_hash));
+    if (existingIdx >= 0) {
+      opportunities[existingIdx] = normalized;
+    } else {
+      opportunities.push(normalized);
+    }
+  });
+
+  if (opportunities.length > 250) {
+    opportunities = opportunities.slice(0, 250);
+  }
+
+  updateMetrics();
+  renderTable();
 }
 
 /**
@@ -401,8 +450,8 @@ function renderTable(highlightHash) {
       <td><span class="badge" style="background: rgba(16,185,129,0.15); color: var(--accent-green);">Ativa</span></td>
       <td>
         <div style="display: flex; gap: 0.35rem;">
-          <button class="btn-action btn-buy" onclick="handleOneClickAction('${deal.id}')" title="Acessar oferta ou comprar em 1-clique">⚡ 1-Click</button>
-          <button class="btn-action" style="background: rgba(0, 242, 254, 0.15); border: 1px solid var(--accent-cyan); color: var(--accent-cyan);" onclick="triggerLegalDocById('${deal.id}')" title="Gerar Notificação Extrajudicial e Petição JEC Art. 35">⚖️ CDC</button>
+          <button class="btn-action btn-buy btn-1click" onclick="handleOneClickAction('${deal.id}')" title="Acessar oferta ou comprar em 1-clique">⚡ 1-Click</button>
+          <button class="btn-action btn-cdc" style="background: rgba(0, 242, 254, 0.15); border: 1px solid var(--accent-cyan); color: var(--accent-cyan);" onclick="triggerLegalDocById('${deal.id}')" title="Gerar Notificação Extrajudicial e Petição JEC Art. 35">⚖️ CDC</button>
         </div>
       </td>
     `;
@@ -862,11 +911,59 @@ function initPWA() {
   }
 }
 
+// ==============================================================================
+// 9. CARREGAMENTO INICIAL REST & DEEP LINK RESOLVER
+// ==============================================================================
+async function loadInitialOpportunities() {
+  try {
+    const params = new URLSearchParams(window.location.search);
+    const initialVertical = params.get('vertical') || params.get('filter');
+    const initialOppId = params.get('opportunity') || params.get('id');
+
+    let endpoint = '/api/opportunities';
+    if (initialVertical && initialVertical !== 'ALL') {
+      endpoint += `?vertical=${encodeURIComponent(initialVertical)}`;
+    }
+
+    const res = await fetch(endpoint);
+    if (res.ok) {
+      const data = await res.json();
+      if (data.opportunities && Array.isArray(data.opportunities)) {
+        ingestBatch(data.opportunities);
+      }
+    }
+
+    // Aplica o filtro inicial lido da URL ou 'ALL'
+    applyFilter(initialVertical || 'ALL', false);
+
+    // Se houver deep link para oportunidade específica
+    if (initialOppId) {
+      const targetOpp = opportunities.find(o => o.id === initialOppId || o.fingerprint_hash === initialOppId);
+      if (targetOpp) {
+        applyFilter(targetOpp.category, false);
+        renderTable(targetOpp.fingerprint_hash);
+        
+        // Rola até a linha correspondente
+        setTimeout(() => {
+          const row = document.querySelector(`a[data-id="${targetOpp.id}"]`);
+          if (row) {
+            row.closest('tr')?.scrollIntoView({ behavior: 'smooth', block: 'center' });
+          }
+        }, 100);
+      }
+    }
+  } catch (err) {
+    console.warn('Erro ao carregar oportunidades iniciais via REST:', err);
+    renderTable();
+  }
+}
+
 // Inicialização ao carregar a página
 document.addEventListener('DOMContentLoaded', () => {
   initFilters();
   initSilenceToggle();
   initModalBackdropClicks();
+  loadInitialOpportunities();
   initWebSocket();
   initPWA();
   

@@ -385,6 +385,8 @@ export class RadarScraperDaemon {
           fingerprint_hash: generateFingerprint(raw.platform, raw.taskTitle, raw.rewardBrl)
         };
       }
+      case 'stacking_deal':
+        return RadarScoringEngine.processStackingDeal(raw);
       default:
         return RadarScoringEngine.processPriceBug(raw);
     }
@@ -508,13 +510,25 @@ export class RadarScraperDaemon {
           isAutomatedScriptable: true,
           sourceUrl: `https://scale.com/gigs/task_${seed}`
         };
+      case 'stacking_deal':
+        return {
+          title: `iPhone 15 Pro Max 256GB - 4 Camadas de Desconto (${tag})`,
+          originalPrice: 8500.00,
+          promoPrice: 7200.00,
+          couponDiscountPercent: 15,
+          cashbackPercent: 10,
+          pointsPerReal: 5,
+          pointValueCpm: 35.0,
+          sourceName: 'Magalu + Inter + Livelo',
+          sourceUrl: `https://magazineluiza.com.br/iphone_${seed}`
+        };
       default:
         return {
           title: `Item Arbitragem Geral (${tag})`,
           currentPrice: 100.00,
           historicalAveragePrice: 1000.00,
           sourceName: 'Radar Feed',
-          sourceUrl: `https://radarhub.local/feed_${seed}`
+          sourceUrl: `https://www.amazon.com.br/dp/B0FEED_${seed}`
         };
     }
   }

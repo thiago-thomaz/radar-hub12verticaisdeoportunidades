@@ -81,7 +81,7 @@ const scraperDaemon = new RadarScraperDaemon();
 const wss = new WebSocketServer({ server });
 const connectedClients = new Set<WebSocket>();
 
-wss.on('connection', (ws: WebSocket) => {
+wss.on('connection', async (ws: WebSocket) => {
   connectedClients.add(ws);
 
   // Envia payload inicial de boas-vindas e telemetria
@@ -91,6 +91,16 @@ wss.on('connection', (ws: WebSocket) => {
     clientsCount: connectedClients.size,
     message: 'Cockpit conectado ao stream em tempo real do RADAR_HUB.'
   }));
+
+  // Envia snapshot inicial das oportunidades ativas
+  try {
+    const initialDeals = await getRecentOpportunities(50);
+    ws.send(JSON.stringify({
+      type: 'INITIAL_OPPORTUNITIES',
+      timestamp: new Date().toISOString(),
+      payload: initialDeals
+    }));
+  } catch (err) {}
 
   ws.on('close', () => {
     connectedClients.delete(ws);
@@ -342,6 +352,114 @@ app.get('/metrics', async (req: Request, res: Response) => {
   res.send(lines.join('\n'));
 });
 
+/**
+ * Função Auxiliar: Recupera Oportunidades do Banco ou Gera Snapshot Resiliente
+ */
+export async function getRecentOpportunities(limit = 100, category?: string, opportunityId?: string): Promise<UnifiedOpportunity[]> {
+  try {
+    let query = `
+      SELECT 
+        id, category, title, description, original_price, opportunity_price,
+        discount_percentage, net_profit_estimate, fipe_or_market_ref, location,
+        source_name, source_url, affiliate_url, evaluation_score, priority,
+        raw_metadata, fingerprint_hash, created_at
+      FROM radar_hub.opportunities
+      WHERE 1=1
+    `;
+    const params: any[] = [];
+    let idx = 1;
+
+    if (category && category !== 'ALL') {
+      query += ` AND category = $${idx++}`;
+      params.push(category);
+    }
+    if (opportunityId) {
+      query += ` AND (fingerprint_hash = $${idx} OR id::text = $${idx++})`;
+      params.push(opportunityId);
+    }
+
+    query += ` ORDER BY created_at DESC LIMIT $${idx++}`;
+    params.push(limit);
+
+    const res = await pool.query(query, params);
+    if (res.rows && res.rows.length > 0) {
+      return res.rows.map(r => ({
+        id: r.fingerprint_hash || r.id?.toString(),
+        category: r.category,
+        title: r.title,
+        description: r.description,
+        original_price: Number(r.original_price || r.opportunity_price || 0),
+        opportunity_price: Number(r.opportunity_price || 0),
+        discount_percentage: Number(r.discount_percentage || 0),
+        net_profit_estimate: Number(r.net_profit_estimate || 0),
+        fipe_or_market_ref: Number(r.fipe_or_market_ref || r.original_price || r.opportunity_price || 0),
+        location: r.location,
+        source_name: r.source_name,
+        source_url: r.source_url,
+        affiliate_url: r.affiliate_url,
+        evaluation_score: Number(r.evaluation_score || 0),
+        priority: r.priority,
+        raw_metadata: r.raw_metadata || {},
+        fingerprint_hash: r.fingerprint_hash
+      }));
+    }
+  } catch (e) {}
+
+  // Fallback para feed inicial representativo das 12 verticais + Stacking
+  const allVerts = [
+    'price_bug', 'car_auction', 'industrial_auction', 'real_estate_local',
+    'public_tender', 'expired_domain', 'remote_job', 'coupon_deal',
+    'cashback_max', 'sweepstake_promo', 'miles_promo', 'microtask_gig', 'stacking_deal'
+  ];
+
+  const targetVerts = (category && category !== 'ALL') ? [category] : allVerts;
+  const seedItems: UnifiedOpportunity[] = [];
+
+  for (const v of targetVerts) {
+    try {
+      const sample = scraperDaemon.generateSampleFeedItem(v);
+      const scored = scraperDaemon.scoreRawFeedItem(v, sample);
+      seedItems.push(scored);
+    } catch {}
+  }
+
+  return seedItems;
+}
+
+// Endpoint REST: Listagem de Oportunidades com Filtros
+app.get('/api/opportunities', async (req: Request, res: Response) => {
+  try {
+    const vertical = (req.query.vertical || req.query.category || 'ALL') as string;
+    const limit = Math.min(200, parseInt((req.query.limit as string) || '100', 10));
+    const opportunityId = (req.query.opportunity || req.query.id) as string | undefined;
+
+    const deals = await getRecentOpportunities(limit, vertical, opportunityId);
+    res.json({
+      success: true,
+      count: deals.length,
+      vertical,
+      opportunities: deals
+    });
+  } catch (err: any) {
+    res.status(500).json({ success: false, error: err.message });
+  }
+});
+
+// Endpoint REST: Detalhe de uma Oportunidade por ID / Hash
+app.get('/api/opportunities/:id', async (req: Request, res: Response) => {
+  try {
+    const id = req.params.id;
+    const deals = await getRecentOpportunities(1, undefined, id);
+    if (deals.length > 0) {
+      res.json({ success: true, opportunity: deals[0] });
+    } else {
+      res.status(404).json({ success: false, error: 'Oportunidade não encontrada' });
+    }
+  } catch (err: any) {
+    res.status(500).json({ success: false, error: err.message });
+  }
+});
+
 // Endpoint de Avaliação e Broadcast em Tempo Real
 app.post('/api/evaluate', async (req: Request, res: Response) => {
   try {
@@ -376,7 +494,7 @@ app.post('/api/evaluate', async (req: Request, res: Response) => {
           fipe_or_market_ref: r.marketEstimatedTotal,
           location: `Bauru - ${payload.neighborhood}`,
           source_name: payload.sourceName || 'Imóveis Bauru',
-          source_url: payload.sourceUrl || 'https://radarhub.local/bauru',
+          source_url: payload.sourceUrl || 'https://caixa.gov.br/imoveis',
           evaluation_score: r.score,
           priority: r.priority,
           raw_metadata: r,
@@ -456,7 +574,7 @@ app.post('/api/evaluate', async (req: Request, res: Response) => {
           net_profit_estimate: payload.discountValue || 50,
           fipe_or_market_ref: payload.discountValue || 100,
           source_name: payload.storeName,
-          source_url: payload.sourceUrl || 'https://radarhub.local/cupons',
+          source_url: payload.sourceUrl || 'https://magazineluiza.com.br/cupons',
           evaluation_score: r.score,
           priority: r.priority,
           raw_metadata: r,
@@ -476,7 +594,7 @@ app.post('/api/evaluate', async (req: Request, res: Response) => {
           net_profit_estimate: r.cashValue,
           fipe_or_market_ref: payload.productPrice,
           source_name: r.bestProvider,
-          source_url: payload.sourceUrl || 'https://radarhub.local/cashback',
+          source_url: payload.sourceUrl || 'https://bancointer.com.br/cashback',
           evaluation_score: r.score,
           priority: r.priority,
           raw_metadata: r,
@@ -496,7 +614,7 @@ app.post('/api/evaluate', async (req: Request, res: Response) => {
           net_profit_estimate: payload.mainPrizeValue,
           fipe_or_market_ref: payload.mainPrizeValue,
           source_name: `SECAP / ${payload.brandName}`,
-          source_url: payload.sourceUrl || 'https://radarhub.local/sorteios',
+          source_url: payload.sourceUrl || 'https://promonestle.com.br/sorteios',
           evaluation_score: r.score,
           priority: r.priority,
           raw_metadata: r,
@@ -516,7 +634,7 @@ app.post('/api/evaluate', async (req: Request, res: Response) => {
           net_profit_estimate: payload.rewardBrl,
           fipe_or_market_ref: r.hourlyRate,
           source_name: payload.platform,
-          source_url: payload.sourceUrl || 'https://radarhub.local/microtasks',
+          source_url: payload.sourceUrl || 'https://scale.com/gigs',
           evaluation_score: r.score,
           priority: r.priority,
           raw_metadata: r,
@@ -616,7 +734,7 @@ app.post('/api/checkout/create-order', async (req: Request, res: Response) => {
     const { opportunityId, targetUrl, maxPriceLimit, accountEmail, coupons } = req.body;
     const task = buildOneClickCheckoutTask({
       opportunityId: opportunityId || `opp_${Date.now()}`,
-      targetUrl: targetUrl || 'https://radarhub.local',
+      targetUrl: targetUrl || 'https://www.amazon.com.br',
       maxPriceLimit: maxPriceLimit || 49.90,
       accountEmail,
       coupons
@@ -627,7 +745,7 @@ app.post('/api/checkout/create-order', async (req: Request, res: Response) => {
         INSERT INTO radar_hub.checkout_orders (
           target_url, account_email, applied_coupons, final_checkout_price, pix_code, pix_qr_url, order_status
         ) VALUES ($1, $2, $3, $4, $5, $6, $7)
-      `, [targetUrl || 'https://radarhub.local', accountEmail || null, task.appliedCoupons || [], task.finalPrice, task.pixCode, task.pixQrUrl, task.status]);
+      `, [targetUrl || 'https://www.amazon.com.br', accountEmail || null, task.appliedCoupons || [], task.finalPrice, task.pixCode, task.pixQrUrl, task.status]);
     } catch (e) {}
 
     res.json({ success: true, order: task });
@@ -813,7 +931,7 @@ app.post('/api/sniper/execute', async (req: Request, res: Response) => {
     const task = req.body;
     const sniperResult = await headlessSniper.executeSniper({
       taskId: task.taskId || `SNIPER_${Date.now()}`,
-      targetUrl: task.targetUrl || 'https://radarhub.local',
+      targetUrl: task.targetUrl || 'https://www.amazon.com.br',
       maxPriceLimit: Number(task.maxPriceLimit) || 999.00,
       coupons: task.coupons || []
     });

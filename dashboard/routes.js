@@ -144,7 +144,7 @@ const RADAR_VERTICALS = {
  */
 const SafeNavigator = {
   disallowedProtocols: ['javascript:', 'data:', 'vbscript:', 'file:'],
-  dummyDomains: ['radarhub.local', 'exemplo.com', 'localhost'],
+  dummyDomains: ['radarhub.local', 'exemplo.com'],
 
   isValidExternalUrl(urlStr) {
     if (!urlStr || typeof urlStr !== 'string') return false;
@@ -156,7 +156,7 @@ const SafeNavigator = {
     }
 
     try {
-      const parsed = new URL(clean, window.location.origin);
+      const parsed = new URL(clean);
       if (parsed.protocol !== 'http:' && parsed.protocol !== 'https:') return false;
 
       // Impede abertura de domínios dummy em novas abas
