@@ -1,12 +1,33 @@
+# Dependencies
 node_modules/
+
+# Production build outputs
 dist/
+
+# Environment and secrets (CRITICAL SHIELD)
 .env
+.env.*
+!.env.example
+*.env
 *.env.local
+*.env.production
+*.env.development
+*.pem
+*.key
+*.cert
+credentials.json
+*.id_rsa
+*.id_ecdsa
+
+# Persistence and runtime artifacts
 backups/
 storage/
 *.log
 npm-debug.log*
 yarn-debug.log*
 yarn-error.log*
+
+# OS specific files
 .DS_Store
 Thumbs.db
+Desktop.ini
