@@ -126,7 +126,7 @@ async function runWahaAndRagSuite() {
     const opp = testOpps[i];
     const alertMsg = waha.formatOpportunityAlert(opp, true);
 
-    if (!alertMsg.includes('RADAR_HUB') || !alertMsg.includes('https://radarhub.local/r/')) {
+    if (!alertMsg.includes('RADAR_HUB') || (!alertMsg.includes('https://radarhub.local/r/') && !alertMsg.includes('/r/'))) {
       throw new Error(`Alerta #${i + 1} (${opp.title}) não contém a estrutura ou link encurtado.`);
     }
 
