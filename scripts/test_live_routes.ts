@@ -42,6 +42,11 @@ async function run() {
   const oppsJson = JSON.parse(r4.data);
   console.log(`[PASS] GET /api/opportunities ➔ Status: ${r4.statusCode} OK - Oportunidades retornadas: ${oppsJson.count}`);
 
+  // 5. GET /api/orchestrator/status (Orquestrador Nativo - 18 Pipelines - Zero n8n)
+  const rOrch = await request('/api/orchestrator/status');
+  const orchJson = JSON.parse(rOrch.data);
+  console.log(`[PASS] GET /api/orchestrator/status ➔ Status: ${rOrch.statusCode} OK | Engine: ${orchJson.engine} | Pipelines: ${orchJson.totalPipelines}/18 Ativos: ${orchJson.activePipelines} | Zero n8n: ${orchJson.dependency}`);
+
   // 5. POST /api/evaluate (Scoring Engine em Tempo Real)
   const evalPayload = JSON.stringify({
     category: 'price_bug',

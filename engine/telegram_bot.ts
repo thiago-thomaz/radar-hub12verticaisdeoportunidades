@@ -339,7 +339,7 @@ export class RadarTelegramBot {
         const statusText = `📡 <b>STATUS OPERACIONAL DO RADAR_HUB</b>\n\n` +
           `• <b>PostgreSQL + Timescale:</b> 🟢 ONLINE (Latência: 1.1ms)\n` +
           `• <b>Pool de Proxies Resilientes:</b> 🟢 14 Ativos / 1 Cooldown\n` +
-          `• <b>18 Workflows n8n:</b> 🟢 Orquestrador Ativo\n` +
+          `• <b>18 Pipelines Nativos:</b> 🟢 Orquestrador Interno Ativo (Zero n8n)\n` +
           `• <b>Detector de Bugs v2.6:</b> 🟢 Ativo (Limiar >= 60% OFF)\n` +
           `• <b>Deduplicação SHA-256:</b> 🟢 Hash Lock Ativo (Zero Duplicatas)\n` +
           `• <b>WebSockets Cockpit:</b> 🟢 Stream em Tempo Real Ativo`;

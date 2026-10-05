@@ -93,7 +93,6 @@ ufw allow 443/tcp comment 'HTTPS Nginx Gateway'
 # Bloquear explicitamente portas internas de infraestrutura caso expostas
 ufw deny 5432 comment 'Block direct PostgreSQL'
 ufw deny 6379 comment 'Block direct Redis'
-ufw deny 5678 comment 'Block direct n8n'
 ufw deny 9090 comment 'Block direct Prometheus'
 ufw deny 3000 comment 'Block direct Radar App'
 ufw deny 3001 comment 'Block direct Grafana'

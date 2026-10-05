@@ -42,7 +42,8 @@ import {
   RadarAudioTranscriber,
   RadarBroadcastSegmenter,
   RadarPdfReportGenerator,
-  RadarSocialPoster
+  RadarSocialPoster,
+  RadarNativeOrchestrator
 } from './engine';
 
 dotenv.config();
@@ -125,8 +126,8 @@ export function broadcastWebSocket(type: string, payload: any): void {
   });
 }
 
-// Conectar eventos do Scraper Daemon ao WebSocket e Telegram
-scraperDaemon.onOpportunityDiscovered = async (opp: UnifiedOpportunity) => {
+// Processamento unificado de oportunidades descobertas (Persistência + WebSocket + Alertas)
+async function processDiscoveredOpportunity(opp: UnifiedOpportunity) {
   // 1. Gravação no PostgreSQL
   try {
     await pool.query(`
@@ -153,7 +154,10 @@ scraperDaemon.onOpportunityDiscovered = async (opp: UnifiedOpportunity) => {
   if (opp.evaluation_score >= 85 || opp.priority === 'CRITICAL_BUG') {
     telegramBot.broadcastOpportunityAlert(opp).catch(() => {});
   }
-};
+}
+
+// Conectar eventos do Scraper Daemon e Orquestrador Nativo
+scraperDaemon.onOpportunityDiscovered = processDiscoveredOpportunity;
 
 scraperDaemon.onLogEmitted = (log) => {
   broadcastWebSocket('LIVE_LOG', log);
@@ -161,6 +165,13 @@ scraperDaemon.onLogEmitted = (log) => {
 
 scraperDaemon.onCircuitStateChanged = (category, state) => {
   broadcastWebSocket('CIRCUIT_STATE_CHANGE', { category, state });
+};
+
+// Inicialização do Orquestrador Nativo (18 Pipelines Autônomos - Zero n8n)
+const nativeOrchestrator = RadarNativeOrchestrator.getInstance(scraperDaemon, telegramBot);
+nativeOrchestrator.onOpportunityDiscovered = processDiscoveredOpportunity;
+nativeOrchestrator.onLogEmitted = (level, message) => {
+  broadcastWebSocket('LIVE_LOG', `[NATIVE ORCHESTRATOR] [${level}] ${message}`);
 };
 
 // Telemetria periódica via WebSocket a cada 5 segundos
@@ -1106,8 +1117,44 @@ app.post('/api/telegram/webhook', async (req: Request, res: Response) => {
   }
 });
 
-// Iniciar servidor HTTP + WebSockets
+// Endpoint REST: Status da Orquestração Nativa (18 Pipelines Autônomos)
+app.get('/api/orchestrator/status', (req: Request, res: Response) => {
+  res.json({
+    success: true,
+    engine: 'NATIVE_TYPESCRIPT_AUTONOMOUS',
+    dependency: 'ZERO_N8N_100_PERCENT_INTERNAL',
+    ...nativeOrchestrator.getStatus()
+  });
+});
+
+// Endpoint REST: Disparo Manual de Ciclo de Pipeline
+app.post('/api/orchestrator/trigger/:id', async (req: Request, res: Response) => {
+  try {
+    const id = req.params.id;
+    const ok = await nativeOrchestrator.runPipelineCycle(id);
+    res.json({ success: ok, pipelineId: id });
+  } catch (err: any) {
+    res.status(500).json({ success: false, error: err.message });
+  }
+});
+
+// Iniciar servidor HTTP + WebSockets + Orquestrador Nativo
 server.listen(PORT, () => {
   console.log(`[RADAR_HUB] Cockpit, API & WebSocket Server ativo na porta ${PORT}`);
   scraperDaemon.start();
+  nativeOrchestrator.start();
 });
+
+// Tratamento de Sinais de Término (SIGTERM / SIGINT) para Deploy Zero-Downtime no Coolify
+const gracefulShutdown = () => {
+  console.log('\n[RADAR_HUB] Recebido sinal de término. Encerrando serviços graciosamente...');
+  nativeOrchestrator.stop();
+  scraperDaemon.stop();
+  server.close(() => {
+    pool.end().catch(() => {});
+    process.exit(0);
+  });
+};
+
+process.on('SIGTERM', gracefulShutdown);
+process.on('SIGINT', gracefulShutdown);

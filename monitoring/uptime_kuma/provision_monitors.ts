@@ -118,15 +118,15 @@ export class UptimeKumaProvisioner {
         description: 'Dashboard de observabilidade e métricas'
       },
       {
-        id: 'radar_n8n_orchestrator',
-        name: '🔄 n8n Automation Engine (18 Workflows)',
+        id: 'radar_native_orchestrator',
+        name: '🔄 Radar Native Automation Engine (18 Pipelines)',
         type: 'http',
-        url: `http://n8n:5678/healthz`,
+        url: `http://radar_app:3000/api/orchestrator/status`,
         interval: 15,
         retryInterval: 5,
         maxRetries: 2,
         expectedStatus: [200],
-        description: 'Orquestrador de raspagem e webhooks'
+        description: 'Orquestrador interno autônomo (100% nativo em TypeScript, zero n8n)'
       }
     ];
   }

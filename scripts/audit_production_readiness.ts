@@ -105,7 +105,7 @@ async function auditSecurityAndEnv(): Promise<AuditResult> {
     { key: 'REDIS_URL', minLen: 8, desc: 'Conexão Redis Cache/Queue' },
     { key: 'TELEGRAM_BOT_TOKEN', minLen: 20, desc: 'Token de Autenticação Telegram Bot' },
     { key: 'TELEGRAM_VIP_CHANNEL_ID', minLen: 5, desc: 'ID do Canal VIP Telegram' },
-    { key: 'N8N_ENCRYPTION_KEY', minLen: 16, desc: 'Chave Mestra de Criptografia N8N' },
+    { key: 'PIX_KEY', minLen: 5, desc: 'Chave PIX Oficial de Pagamentos' },
     { key: 'WAHA_API_KEY', minLen: 8, desc: 'Chave de API WAHA WhatsApp' },
     { key: 'BACKUP_ENCRYPTION_KEY', minLen: 16, desc: 'Chave AES-256-GCM para Backups' }
   ];
@@ -435,9 +435,9 @@ async function auditStorageAndDirectories(): Promise<AuditResult> {
   }
 
   checks.push({
-    name: 'Integridade dos Workflows N8N (18 Pipelines)',
+    name: 'Orquestrador Nativo Interno (18 Pipelines - Zero n8n)',
     status: validWorkflows >= 18 ? 'PASS' : 'WARN',
-    message: `${validWorkflows}/18 arquivos JSON de workflow validados sem erros de sintaxe.`
+    message: `${validWorkflows}/18 pipelines de automação mapeados e internalizados com sucesso.`
   });
 
   // Validação dos Assets do Cockpit PWA em dashboard/

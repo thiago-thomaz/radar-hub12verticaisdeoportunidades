@@ -142,7 +142,7 @@ async function runDeployValidationSuite() {
   if (!fs.existsSync(composePath)) throw new Error('docker-compose.yml não encontrado.');
 
   const composeContent = fs.readFileSync(composePath, 'utf8');
-  const requiredServices = ['postgres:', 'redis:', 'n8n:', 'radar_app:', 'prometheus:', 'grafana:', 'nginx:', 'backup_worker:'];
+  const requiredServices = ['postgres:', 'redis:', 'radar_app:', 'prometheus:', 'grafana:', 'nginx:', 'backup_worker:'];
 
   for (const s of requiredServices) {
     if (!composeContent.includes(s)) {
@@ -150,7 +150,7 @@ async function runDeployValidationSuite() {
     }
   }
 
-  logPass(`docker-compose.yml validado com todos os 8 serviços de produção.`);
+  logPass(`docker-compose.yml validado com todos os 7 serviços essenciais de produção (zero n8n).`);
 
   // ============================================================================
   // ETAPA 4: SIMULAÇÃO LOCAL DE DEPLOY & BACKUP PREVENTIVO

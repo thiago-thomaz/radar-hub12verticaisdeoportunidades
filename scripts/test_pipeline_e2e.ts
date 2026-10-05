@@ -237,7 +237,7 @@ const SYNTHETIC_DEALS = [
       title: 'Senior TypeScript & Distributed Systems Engineer',
       company: 'North American FinTech Corp',
       salaryUsdAnnual: 120000,
-      techStack: ['TypeScript', 'Node.js', 'PostgreSQL', 'Docker', 'n8n'],
+      techStack: ['TypeScript', 'Node.js', 'PostgreSQL', 'Docker', 'Redis'],
       sourceUrl: 'https://remoteok.com/remote-jobs/102938'
     },
     evaluator: (input: any) => {
