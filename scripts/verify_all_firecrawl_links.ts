@@ -2,12 +2,12 @@
  * ==============================================================================
  * RADAR_HUB — SUÍTE DE AUDITORIA E VALIDAÇÃO DE LINKS FIRECRAWL (13 VERTICAIS)
  * ==============================================================================
- * Executa requisições HTTP reais para todos os links das 13 verticais de oportunidades
- * coletadas e verificadas via Firecrawl, garantindo:
+ * Validação rigorosa:
  * 1. Zero links quebrados (100% Status 200 OK);
- * 2. Títulos exatos e nomes de lojas reais;
- * 3. Validação de contratos de schema e scoring;
- * 4. Conformidade estrita com as regras de navegação segura (SafeNavigator).
+ * 2. Links Diretos na Loja/Fonte Oficial (proibido fóruns agregadores como Pelando);
+ * 3. Conteúdo Ativo de AGORA (zero conteúdo com selo 'Expirado', 'Esgotado' ou antigo);
+ * 4. Validação de contratos de schema e scoring;
+ * 5. Conformidade com URLSafetyValidator.
  */
 
 import { RadarFirecrawlService } from '../engine/firecrawl_service';
@@ -15,7 +15,7 @@ import { URLSafetyValidator } from '../engine/routes_registry';
 
 async function verifyAllLinks() {
   console.log('================================================================');
-  console.log('RADAR_HUB — INICIANDO AUDITORIA DE LINKS RASPAGEM FIRECRAWL');
+  console.log('RADAR_HUB — AUDITORIA DE LINKS DIRETOS & DADOS ATIVOS (FIRECRAWL)');
   console.log('================================================================\n');
 
   const firecrawl = RadarFirecrawlService.getInstance();
@@ -41,7 +41,14 @@ async function verifyAllLinks() {
       continue;
     }
 
-    // 2. Requisição HTTP real para validar liveness
+    // 2. Validação de Direct Merchant (sem intermediários de fórum)
+    if (RadarFirecrawlService.isForumAggregatorUrl(url)) {
+      console.error(`  ❌ FALHA: URL pertence a fórum/agregador intermediário (${url}). Deve ser link direto da loja!`);
+      failedCount++;
+      continue;
+    }
+
+    // 3. Requisição HTTP real para validar liveness e conteúdo
     try {
       const res = await fetch(url, {
         headers: {
@@ -53,8 +60,16 @@ async function verifyAllLinks() {
       });
 
       if (res.status >= 200 && res.status < 400) {
-        console.log(`  ✅ HTTP ${res.status} OK — Link 100% ativo e funcional.\n`);
-        passedCount++;
+        const text = await res.text();
+        const isExpired = RadarFirecrawlService.isContentExpired(text);
+
+        if (isExpired) {
+          console.error(`  ❌ FALHA: A página foi carregada mas contém selo de EXPIRADO/ESGOTADO no conteúdo!\n`);
+          failedCount++;
+        } else {
+          console.log(`  ✅ HTTP ${res.status} OK — Link Direto na Loja, Ativo AGORA e 100% Funcional.\n`);
+          passedCount++;
+        }
       } else {
         console.error(`  ❌ FALHA: HTTP Status ${res.status} (${res.statusText})\n`);
         failedCount++;
@@ -68,15 +83,15 @@ async function verifyAllLinks() {
   console.log('================================================================');
   console.log(`RELATÓRIO FINAL:`);
   console.log(`Total testado: ${opportunities.length}`);
-  console.log(`Aprovados (200 OK): ${passedCount}`);
+  console.log(`Aprovados (Diretos, 200 OK e Ativos): ${passedCount}`);
   console.log(`Falhas: ${failedCount}`);
   console.log('================================================================');
 
   if (failedCount > 0) {
-    console.error(`\n🚨 AUDITORIA FALHOU: ${failedCount} links quebrados encontrados.`);
+    console.error(`\n🚨 AUDITORIA FALHOU: ${failedCount} problemas encontrados.`);
     process.exit(1);
   } else {
-    console.log(`\n🎉 SUCESSO TOTAL: 100% dos links das 13 verticais homologados e operacionais!`);
+    console.log(`\n🎉 SUCESSO TOTAL: 100% dos links são diretos, sem fóruns e com dados ativos de AGORA!`);
     process.exit(0);
   }
 }
