@@ -402,12 +402,12 @@ export class RadarScraperDaemon {
     switch (category) {
       case 'price_bug':
         return {
-          title: `Smart TV 65" OLED 4K 120Hz (${tag})`,
+          title: `Smart TV LG OLED 65" 4K 120Hz (${tag})`,
           currentPrice: 749.90,
           historicalAveragePrice: 6999.00,
           isFulfilledOrPrime: true,
-          sourceName: 'Amazon Brasil',
-          sourceUrl: 'https://www.amazon.com.br/s?k=Smart+TV+65+OLED'
+          sourceName: 'Mercado Livre Oficial',
+          sourceUrl: 'https://www.mercadolivre.com.br/smart-tv-lg-oled-65-polegadas-4k-oled65c3psa/p/MLB24586940'
         };
       case 'car_auction':
         return {
@@ -416,8 +416,8 @@ export class RadarScraperDaemon {
           fipePrice: 135000.00,
           categoryType: 'car',
           location: 'São Paulo - SP',
-          sourceName: 'Freitas Leiloeiro',
-          sourceUrl: 'https://www.freitasleiloeiro.com.br/'
+          sourceName: 'Freitas Leiloeiro Oficial',
+          sourceUrl: 'https://www.freitasleiloeiro.com.br/leiloes/veiculos'
         };
       case 'industrial_auction':
         return {
@@ -426,8 +426,8 @@ export class RadarScraperDaemon {
           fipePrice: 110000.00,
           categoryType: 'industrial_asset',
           location: 'Campinas - SP',
-          sourceName: 'Sodré Santoro Leilões',
-          sourceUrl: 'https://www.sodresantoro.com.br/'
+          sourceName: 'Freitas Leilões Industriais',
+          sourceUrl: 'https://www.freitasleiloeiro.com.br/leiloes/veiculos'
         };
       case 'real_estate_local':
         return {
@@ -436,7 +436,7 @@ export class RadarScraperDaemon {
           totalPrice: 380000.00,
           totalAreaM2: 120,
           sourceName: 'Caixa Leilões Bauru',
-          sourceUrl: 'https://venda-imoveis.caixa.gov.br/sistema/busca-imovel.asp'
+          sourceUrl: 'https://venda-imoveis.caixa.gov.br/sistema/busca-imovel.asp?sQuery=sp&cboCidade=bauru'
         };
       case 'public_tender':
         return {
@@ -446,7 +446,7 @@ export class RadarScraperDaemon {
           modality: 'DISPENSA',
           closingDate: '2026-09-20',
           estimatedMarginPercent: 30.0,
-          sourceUrl: 'https://pncp.gov.br/app/editais'
+          sourceUrl: 'https://pncp.gov.br/app/editais/35156504000180-1-000014/2025'
         };
       case 'expired_domain':
         return {
@@ -454,15 +454,15 @@ export class RadarScraperDaemon {
           domainAuthority: 35,
           backlinksCount: 1950,
           estimatedAppraisalUsd: 800,
-          sourceUrl: `https://registro.br/busca-dominio/?q=advocaciabauru_${tag}.com.br`
+          sourceUrl: 'https://registro.br/dominio/processo-de-liberacao/'
         };
       case 'remote_job':
         return {
-          title: `Senior Distributed Systems Engineer (${tag})`,
-          company: 'Fintech USA Global',
+          title: `Growth Strategist & Systems Engineer (${tag})`,
+          company: 'Lyric Remote Global',
           salaryUsdAnnual: 130000,
           techStack: ['TypeScript', 'Go', 'Kubernetes', 'PostgreSQL'],
-          sourceUrl: 'https://remoteok.com/'
+          sourceUrl: 'https://remoteok.com/remote-jobs/remote-growth-strategist-lyric-1135681'
         };
       case 'coupon_deal':
         return {
@@ -512,23 +512,23 @@ export class RadarScraperDaemon {
         };
       case 'stacking_deal':
         return {
-          title: `iPhone 15 Pro Max 256GB - 4 Camadas de Desconto (${tag})`,
-          originalPrice: 8500.00,
-          promoPrice: 7200.00,
+          title: `Apple iPhone 15 128GB Preto - 4 Camadas (${tag})`,
+          originalPrice: 7299.00,
+          promoPrice: 4899.00,
           couponDiscountPercent: 15,
           cashbackPercent: 10,
           pointsPerReal: 5,
           pointValueCpm: 35.0,
-          sourceName: 'Magalu + Inter + Livelo',
-          sourceUrl: 'https://www.magazineluiza.com.br/'
+          sourceName: 'Mercado Livre + Inter + Livelo',
+          sourceUrl: 'https://www.mercadolivre.com.br/apple-iphone-15-128-gb-preto/p/MLB27339191'
         };
       default:
         return {
           title: `Item Arbitragem Geral (${tag})`,
           currentPrice: 100.00,
           historicalAveragePrice: 1000.00,
-          sourceName: 'Radar Feed',
-          sourceUrl: 'https://www.amazon.com.br/deals'
+          sourceName: 'Mercado Livre',
+          sourceUrl: 'https://www.mercadolivre.com.br/apple-iphone-15-128-gb-preto/p/MLB27339191'
         };
     }
   }
