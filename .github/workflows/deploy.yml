@@ -13,7 +13,7 @@ concurrency:
 
 jobs:
   # ============================================================================
-  # 1. ETAPA DE CI: COMPILAÇÃO, TESTES DE MOTORES, BANCO, E2E E SRE
+  # 1. ETAPA DE CI: COMPILAÇÃO, TESTES DE MOTORES, BANCO, E2E, NAVEGAÇÃO E SRE
   # ============================================================================
   ci-test:
     name: 🧪 CI // Build & Suíte Completa de Testes
@@ -34,6 +34,15 @@ jobs:
 
       - name: 🔨 Compilar TypeScript (Type Check)
         run: npm run build
+
+      - name: 🧭 Executar Testes de Navegação & Rotas
+        run: npm run test:navigation
+
+      - name: 📋 Executar Testes de Contrato das Verticais
+        run: npm run test:contract
+
+      - name: 🔗 Executar Auditoria de Links Diretos Firecrawl
+        run: npm run test:firecrawl-links
 
       - name: ⚡ Executar Smoke Test dos Motores
         run: npm run test:engines
@@ -75,7 +84,7 @@ jobs:
         run: npm run test:pdf-social
 
   # ============================================================================
-  # 2. ETAPA DE CD: DEPLOY AUTOMATIZADO NA VPS DE PRODUÇÃO VIA SSH
+  # 2. ETAPA DE CD: DEPLOY AUTOMATIZADO VIA COOLIFY (PADRÃO OFICIAL) / SSH
   # ============================================================================
   cd-deploy:
     name: 🚀 CD // Deploy Contínuo em Produção
@@ -87,21 +96,30 @@ jobs:
       - name: 📥 Checkout do Repositório
         uses: actions/checkout@v4
 
-      - name: 🔐 Executar Deploy Remoto via SSH na VPS
+      - name: 🌐 Disparar Deploy no Coolify via Webhook
+        if: ${{ secrets.COOLIFY_WEBHOOK_URL != '' }}
+        run: |
+          echo "Disparando webhook do Coolify..."
+          curl -s -f -X POST "${{ secrets.COOLIFY_WEBHOOK_URL }}" || curl -s -X GET "${{ secrets.COOLIFY_WEBHOOK_URL }}"
+          echo "Webhook do Coolify disparado com sucesso."
+
+      - name: 🌐 Disparar Deploy no Coolify via API Oficial
+        if: ${{ secrets.COOLIFY_TOKEN != '' && secrets.COOLIFY_WEBHOOK_URL == '' }}
+        run: |
+          echo "Disparando deploy via API do Coolify..."
+          curl -s -f -X POST "http://72.62.13.62:8000/api/v1/deploy?uuid=6atr2cuewo8c8r7ln1pgjcwx" \
+            -H "Authorization: Bearer ${{ secrets.COOLIFY_TOKEN }}"
+          echo "Deploy acionado no Coolify com sucesso."
+
+      - name: 🔐 Executar Deploy Remoto via SSH na VPS (Fallback Opcional)
+        if: ${{ secrets.SSH_HOST != '' && secrets.SSH_PRIVATE_KEY != '' }}
         uses: appleboy/ssh-action@v1.0.3
-        if: env.SSH_HOST != ''
-        env:
-          SSH_HOST: ${{ secrets.SSH_HOST }}
-          SSH_USER: ${{ secrets.SSH_USER }}
-          SSH_KEY: ${{ secrets.SSH_PRIVATE_KEY }}
-          SSH_PORT: ${{ secrets.SSH_PORT || '22' }}
         with:
           host: ${{ secrets.SSH_HOST }}
           username: ${{ secrets.SSH_USER }}
           key: ${{ secrets.SSH_PRIVATE_KEY }}
-          port: ${{ secrets.SSH_PORT || '22' }}
+          port: ${{ secrets.SSH_PORT != '' && secrets.SSH_PORT || 22 }}
           script_stop: true
-          envs: TELEGRAM_BOT_TOKEN,TELEGRAM_VIP_CHANNEL_ID
           script: |
             set -e
             echo "Iniciando deploy na VPS..."
@@ -109,11 +127,9 @@ jobs:
             bash deploy/deploy.sh
 
       - name: 📢 Notificar Sucesso no Telegram
-        if: success()
+        if: ${{ success() && secrets.TELEGRAM_BOT_TOKEN != '' && secrets.TELEGRAM_VIP_CHANNEL_ID != '' }}
         run: |
-          if [ -n "${{ secrets.TELEGRAM_BOT_TOKEN }}" ] && [ -n "${{ secrets.TELEGRAM_VIP_CHANNEL_ID }}" ]; then
-            curl -s -X POST "https://api.telegram.org/bot${{ secrets.TELEGRAM_BOT_TOKEN }}/sendMessage" \
-              -d "chat_id=${{{ secrets.TELEGRAM_VIP_CHANNEL_ID }}}" \
-              -d "text=🚀 <b>[CI/CD] DEPLOY EM PRODUÇÃO REALIZADO COM SUCESSO!</b>%0ACommit: <code>${{ github.sha }}</code>%0AAutor: ${{ github.actor }}" \
-              -d "parse_mode=HTML" || true
-          fi
+          curl -s -X POST "https://api.telegram.org/bot${{ secrets.TELEGRAM_BOT_TOKEN }}/sendMessage" \
+            -d "chat_id=${{ secrets.TELEGRAM_VIP_CHANNEL_ID }}" \
+            -d "text=🚀 <b>[CI/CD] DEPLOY EM PRODUÇÃO REALIZADO COM SUCESSO!</b>%0ACommit: <code>${{ github.sha }}</code>%0AAutor: ${{ github.actor }}" \
+            -d "parse_mode=HTML" || true
