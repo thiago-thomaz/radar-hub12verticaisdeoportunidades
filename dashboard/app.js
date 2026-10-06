@@ -749,6 +749,19 @@ function applyFilter(filterKey, updateUrl = true) {
   }
 
   renderTable();
+
+  // Garante hidratação sob demanda de todas as opções da vertical
+  if (activeFilter !== 'ALL') {
+    fetch(`/api/opportunities?vertical=${encodeURIComponent(activeFilter)}&limit=50`)
+      .then(r => r.ok ? r.json() : null)
+      .then(data => {
+        if (data && data.opportunities && Array.isArray(data.opportunities)) {
+          ingestBatch(data.opportunities);
+          renderTable();
+        }
+      })
+      .catch(() => {});
+  }
 }
 
 function initFilters() {
@@ -920,12 +933,8 @@ async function loadInitialOpportunities() {
     const initialVertical = params.get('vertical') || params.get('filter');
     const initialOppId = params.get('opportunity') || params.get('id');
 
-    let endpoint = '/api/opportunities';
-    if (initialVertical && initialVertical !== 'ALL') {
-      endpoint += `?vertical=${encodeURIComponent(initialVertical)}`;
-    }
-
-    const res = await fetch(endpoint);
+    // Carrega o catálogo completo de todas as verticais (60+ oportunidades)
+    const res = await fetch('/api/opportunities?limit=150');
     if (res.ok) {
       const data = await res.json();
       if (data.opportunities && Array.isArray(data.opportunities)) {

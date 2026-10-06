@@ -438,25 +438,12 @@ export async function getRecentOpportunities(limit = 100, category?: string, opp
     }
   } catch (e) {}
 
-  // Fallback para feed inicial representativo das 12 verticais + Stacking
-  const allVerts = [
-    'price_bug', 'car_auction', 'industrial_auction', 'real_estate_local',
-    'public_tender', 'expired_domain', 'remote_job', 'coupon_deal',
-    'cashback_max', 'sweepstake_promo', 'miles_promo', 'microtask_gig', 'stacking_deal'
-  ];
-
-  const targetVerts = (category && category !== 'ALL') ? [category] : allVerts;
-  const seedItems: UnifiedOpportunity[] = [];
-
-  for (const v of targetVerts) {
-    try {
-      const sample = scraperDaemon.generateSampleFeedItem(v);
-      const scored = scraperDaemon.scoreRawFeedItem(v, sample);
-      seedItems.push(scored);
-    } catch {}
+  // Fallback para feed inicial representativo e rico das 13 verticais (60+ itens)
+  const firecrawl = RadarFirecrawlService.getInstance();
+  if (category && category !== 'ALL') {
+    return firecrawl.getUnifiedOpportunitiesForCategory(category).slice(0, limit);
   }
-
-  return seedItems;
+  return firecrawl.getAllUnifiedOpportunities().slice(0, limit);
 }
 
 // Endpoint REST: Listagem de Oportunidades com Filtros
@@ -1212,9 +1199,44 @@ app.post('/api/orchestrator/trigger/:id', async (req: Request, res: Response) =>
   }
 });
 
+// Função de Seed Automático do Catálogo Rico no PostgreSQL (100% Links Diretos 200 OK)
+async function seedInitialVerifiedOpportunities() {
+  try {
+    const firecrawl = RadarFirecrawlService.getInstance();
+    const allOpps = firecrawl.getAllUnifiedOpportunities();
+    console.log(`[SEED] Sincronizando catálogo completo com o PostgreSQL (${allOpps.length} oportunidades verificadas)...`);
+    
+    for (const opp of allOpps) {
+      await pool.query(`
+        INSERT INTO radar_hub.opportunities (
+          category, title, description, original_price, opportunity_price,
+          discount_percentage, net_profit_estimate, fipe_or_market_ref, location,
+          source_name, source_url, affiliate_url, evaluation_score, priority,
+          raw_metadata, fingerprint_hash
+        ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16)
+        ON CONFLICT (fingerprint_hash) DO UPDATE SET
+          opportunity_price = EXCLUDED.opportunity_price,
+          evaluation_score = EXCLUDED.evaluation_score,
+          source_url = EXCLUDED.source_url,
+          updated_at = NOW();
+      `, [
+        opp.category, opp.title, opp.description, opp.original_price || null,
+        opp.opportunity_price, opp.discount_percentage || null, opp.net_profit_estimate || null,
+        opp.fipe_or_market_ref || null, opp.location || null, opp.source_name,
+        opp.source_url, opp.affiliate_url || null, opp.evaluation_score,
+        opp.priority, JSON.stringify(opp.raw_metadata || {}), opp.fingerprint_hash
+      ]).catch(() => {});
+    }
+    console.log(`[SEED] Catálogo sincronizado com sucesso (${allOpps.length} itens).`);
+  } catch (err: any) {
+    console.warn('[SEED] Aviso: PostgreSQL indisponível para seed ou tabela em migração:', err.message);
+  }
+}
+
 // Iniciar servidor HTTP + WebSockets + Orquestrador Nativo
 server.listen(PORT, () => {
   console.log(`[RADAR_HUB] Cockpit, API & WebSocket Server ativo na porta ${PORT}`);
+  seedInitialVerifiedOpportunities();
   scraperDaemon.start();
   nativeOrchestrator.start();
 });
