@@ -27,6 +27,8 @@ COPY package.json tsconfig.json ./
 COPY engine ./engine
 COPY dashboard ./dashboard
 COPY scripts ./scripts
+COPY monitoring ./monitoring
+COPY database ./database
 COPY server.ts ./
 
 # Compila o TypeScript para JavaScript nativo em dist/
@@ -55,6 +57,8 @@ COPY --from=builder --chown=node:node /app/node_modules ./node_modules
 COPY --from=builder --chown=node:node /app/dist ./dist
 COPY --from=builder --chown=node:node /app/dashboard ./dashboard
 COPY --from=builder --chown=node:node /app/scripts ./scripts
+COPY --from=builder --chown=node:node /app/monitoring ./monitoring
+COPY --from=builder --chown=node:node /app/database ./database
 
 # Troca para usuário sem privilégios (Segurança OWASP / Docker Hardening)
 USER node

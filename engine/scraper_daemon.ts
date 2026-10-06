@@ -407,7 +407,7 @@ export class RadarScraperDaemon {
           historicalAveragePrice: 6999.00,
           isFulfilledOrPrime: true,
           sourceName: 'Amazon Brasil',
-          sourceUrl: `https://amazon.com.br/dp/B0BUG_${seed}`
+          sourceUrl: 'https://www.amazon.com.br/s?k=Smart+TV+65+OLED'
         };
       case 'car_auction':
         return {
@@ -417,7 +417,7 @@ export class RadarScraperDaemon {
           categoryType: 'car',
           location: 'São Paulo - SP',
           sourceName: 'Freitas Leiloeiro',
-          sourceUrl: `https://freitasleiloeiro.com.br/lote/corolla_${seed}`
+          sourceUrl: 'https://www.freitasleiloeiro.com.br/'
         };
       case 'industrial_auction':
         return {
@@ -427,7 +427,7 @@ export class RadarScraperDaemon {
           categoryType: 'industrial_asset',
           location: 'Campinas - SP',
           sourceName: 'Sodré Santoro Leilões',
-          sourceUrl: `https://sodresantoro.com.br/lote/gerador_${seed}`
+          sourceUrl: 'https://www.sodresantoro.com.br/'
         };
       case 'real_estate_local':
         return {
@@ -436,7 +436,7 @@ export class RadarScraperDaemon {
           totalPrice: 380000.00,
           totalAreaM2: 120,
           sourceName: 'Caixa Leilões Bauru',
-          sourceUrl: `https://caixa.gov.br/imovel_bauru_${seed}`
+          sourceUrl: 'https://venda-imoveis.caixa.gov.br/sistema/busca-imovel.asp'
         };
       case 'public_tender':
         return {
@@ -446,7 +446,7 @@ export class RadarScraperDaemon {
           modality: 'DISPENSA',
           closingDate: '2026-09-20',
           estimatedMarginPercent: 30.0,
-          sourceUrl: `https://pncp.gov.br/editais/dispensa_${seed}`
+          sourceUrl: 'https://pncp.gov.br/app/editais'
         };
       case 'expired_domain':
         return {
@@ -462,7 +462,7 @@ export class RadarScraperDaemon {
           company: 'Fintech USA Global',
           salaryUsdAnnual: 130000,
           techStack: ['TypeScript', 'Go', 'Kubernetes', 'PostgreSQL'],
-          sourceUrl: `https://remoteok.com/job_${seed}`
+          sourceUrl: 'https://remoteok.com/'
         };
       case 'coupon_deal':
         return {
@@ -472,7 +472,7 @@ export class RadarScraperDaemon {
           minOrderValue: 150,
           originalPrice: 300,
           isVerified: true,
-          sourceUrl: `https://magazineluiza.com.br/cupom/promo_${seed}`
+          sourceUrl: 'https://www.magazineluiza.com.br/selecao/ofertas/'
         };
       case 'cashback_max':
         return {
@@ -480,7 +480,7 @@ export class RadarScraperDaemon {
           interPercent: 24,
           meliuzPercent: 10,
           productPrice: 7200.00,
-          sourceUrl: `https://bancointer.com.br/dell_cashback_${seed}`
+          sourceUrl: 'https://inter.co/pra-voce/shopping/'
         };
       case 'sweepstake_promo':
         return {
@@ -489,7 +489,7 @@ export class RadarScraperDaemon {
           secapCertificateNumber: `SECAP/SRE 2026/${tag}`,
           participationType: 'FREE_FORM',
           mainPrizeValue: 1000000.00,
-          sourceUrl: `https://promonestle.com.br/participe_${seed}`
+          sourceUrl: 'https://www.gov.br/fazenda/pt-br/assuntos/premios-e-sorteios'
         };
       case 'miles_promo':
         return {
@@ -499,7 +499,7 @@ export class RadarScraperDaemon {
           bonusPercentage: 110,
           costPerThousandOrigin: 35.00,
           sourceName: 'Livelo Pontos',
-          sourceUrl: `https://livelo.com.br/promo_smiles_${seed}`
+          sourceUrl: 'https://www.livelo.com.br/compre-e-pontue'
         };
       case 'microtask_gig':
         return {
@@ -508,7 +508,7 @@ export class RadarScraperDaemon {
           rewardBrl: 55.00,
           estimatedMinutesToComplete: 25,
           isAutomatedScriptable: true,
-          sourceUrl: `https://scale.com/gigs/task_${seed}`
+          sourceUrl: 'https://scale.com/'
         };
       case 'stacking_deal':
         return {
@@ -520,7 +520,7 @@ export class RadarScraperDaemon {
           pointsPerReal: 5,
           pointValueCpm: 35.0,
           sourceName: 'Magalu + Inter + Livelo',
-          sourceUrl: `https://magazineluiza.com.br/iphone_${seed}`
+          sourceUrl: 'https://www.magazineluiza.com.br/'
         };
       default:
         return {
@@ -528,7 +528,7 @@ export class RadarScraperDaemon {
           currentPrice: 100.00,
           historicalAveragePrice: 1000.00,
           sourceName: 'Radar Feed',
-          sourceUrl: `https://www.amazon.com.br/dp/B0FEED_${seed}`
+          sourceUrl: 'https://www.amazon.com.br/deals'
         };
     }
   }

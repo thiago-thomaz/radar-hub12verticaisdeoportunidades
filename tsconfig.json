@@ -12,6 +12,6 @@
     "forceConsistentCasingInFileNames": true,
     "resolveJsonModule": true
   },
-  "include": ["engine/**/*", "scripts/**/*", "server.ts"],
+  "include": ["engine/**/*", "monitoring/**/*", "scripts/**/*", "server.ts"],
   "exclude": ["node_modules", "dist"]
 }

@@ -342,6 +342,8 @@ function showCriticalToast(opp) {
   const priceFormatted = opp.opportunity_price.toLocaleString('pt-BR', { minimumFractionDigits: 2 });
   const profitFormatted = opp.net_profit_estimate.toLocaleString('pt-BR', { minimumFractionDigits: 2 });
 
+  const oppId = opp.id || opp.fingerprint_hash || '';
+
   toast.innerHTML = `
     <div style="font-size: 1.6rem; animation: pulse 1s infinite; flex-shrink: 0;">🚨</div>
     <div style="flex: 1; min-width: 0;">
@@ -357,7 +359,7 @@ function showCriticalToast(opp) {
     </div>
     <div style="display: flex; flex-direction: column; gap: 0.35rem; align-items: flex-end; flex-shrink: 0;">
       <button class="toast-close-btn" aria-label="Fechar" title="Fechar">✕</button>
-      <button class="btn-action btn-buy" style="padding: 0.35rem 0.65rem; font-size: 0.75rem;" onclick="handleOneClickAction('${opp.id}')">⚡ 1-Click</button>
+      <button class="btn-action btn-buy" style="padding: 0.35rem 0.65rem; font-size: 0.75rem;" onclick="handleOneClickAction('${oppId}')">⚡ 1-Click</button>
     </div>
   `;
 
@@ -412,8 +414,11 @@ function renderTable(highlightHash) {
     : opportunities.filter(d => d.category === activeFilter);
 
   filtered.forEach(deal => {
+    const dealId = deal.id || deal.fingerprint_hash || '';
+    deal.id = dealId;
+
     const tr = document.createElement('tr');
-    if (deal.fingerprint_hash === highlightHash || deal.id === highlightHash) {
+    if (deal.fingerprint_hash === highlightHash || dealId === highlightHash) {
       tr.className = 'new-row';
     }
 
@@ -422,7 +427,7 @@ function renderTable(highlightHash) {
     const refFormatted = deal.fipe_or_market_ref.toLocaleString('pt-BR', { minimumFractionDigits: 2 });
     const profitFormatted = deal.net_profit_estimate.toLocaleString('pt-BR', { maximumFractionDigits: 0 });
 
-    const rawUrl = deal.source_url || '';
+    const rawUrl = deal.source_url || deal.affiliate_url || deal.url || '';
     const hasValidUrl = (typeof window !== 'undefined' && window.SafeNavigator) 
       ? window.SafeNavigator.isValidExternalUrl(rawUrl) 
       : (typeof rawUrl === 'string' && (rawUrl.startsWith('http://') || rawUrl.startsWith('https://')) && !rawUrl.includes('localhost') && !rawUrl.includes('radarhub.local'));
@@ -432,7 +437,7 @@ function renderTable(highlightHash) {
       <td><span class="badge ${cat.class}">${cat.label}</span></td>
       <td style="font-weight: 600;">
         <div>
-          <a href="${safeHref}" class="opp-title-link" data-id="${deal.id}" title="${escapeHtml(deal.title)}">
+          <a href="${safeHref}" target="${hasValidUrl ? '_blank' : '_self'}" rel="${hasValidUrl ? 'noopener noreferrer' : ''}" class="opp-title-link" data-id="${dealId}" title="${escapeHtml(deal.title)}">
             ${escapeHtml(deal.title)}
           </a>
         </div>
@@ -450,23 +455,18 @@ function renderTable(highlightHash) {
       <td><span class="badge" style="background: rgba(16,185,129,0.15); color: var(--accent-green);">Ativa</span></td>
       <td>
         <div style="display: flex; gap: 0.35rem;">
-          <button class="btn-action btn-buy btn-1click" onclick="handleOneClickAction('${deal.id}')" title="Acessar oferta ou comprar em 1-clique">⚡ 1-Click</button>
-          <button class="btn-action btn-cdc" style="background: rgba(0, 242, 254, 0.15); border: 1px solid var(--accent-cyan); color: var(--accent-cyan);" onclick="triggerLegalDocById('${deal.id}')" title="Gerar Notificação Extrajudicial e Petição JEC Art. 35">⚖️ CDC</button>
+          <button class="btn-action btn-buy btn-1click" onclick="handleOneClickAction('${dealId}')" title="Acessar oferta ou comprar em 1-clique">⚡ 1-Click</button>
+          <button class="btn-action btn-cdc" style="background: rgba(0, 242, 254, 0.15); border: 1px solid var(--accent-cyan); color: var(--accent-cyan);" onclick="triggerLegalDocById('${dealId}')" title="Gerar Notificação Extrajudicial e Petição JEC Art. 35">⚖️ CDC</button>
         </div>
       </td>
     `;
 
-    // Intercepta clique no título caso URL não seja externa
+    // Intercepta clique no título apenas quando a URL externa for vazia ou inválida
     const linkEl = tr.querySelector('.opp-title-link');
-    if (linkEl) {
+    if (linkEl && !hasValidUrl) {
       linkEl.addEventListener('click', (e) => {
-        if (!hasValidUrl) {
-          e.preventDefault();
-          handleOneClickAction(deal.id);
-        } else {
-          linkEl.target = '_blank';
-          linkEl.rel = 'noopener noreferrer';
-        }
+        e.preventDefault();
+        handleOneClickAction(dealId);
       });
     }
 
