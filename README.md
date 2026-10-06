@@ -1,6 +1,8 @@
 # RADAR_HUB: Radar Supremo de Arbitragem & Oportunidades (18 Pipelines)
 
-Sistema unificado e autônomo para monitoramento de 12 verticais de oportunidades, precificação algorítmica, execução de compras 1-clique, monetização VIP e manutenção auto-healing.
+[![RADAR_HUB CI/CD Pipeline](https://github.com/thiago-thomaz/radar-hub12verticaisdeoportunidades/actions/workflows/deploy.yml/badge.svg)](https://github.com/thiago-thomaz/radar-hub12verticaisdeoportunidades/actions/workflows/deploy.yml)
+
+Sistema unificado e autônomo (100% TypeScript Nativo // Zero n8n) para monitoramento de 12 verticais de oportunidades, precificação algorítmica, execução de compras 1-clique, monetização VIP e manutenção auto-healing.
 
 > 🚀 **Deploy Automático:** Ativo via Coolify (`radar.projetosunion.cloud`)
 
