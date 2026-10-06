@@ -32,7 +32,7 @@ COPY database ./database
 COPY server.ts ./
 
 # Compila o TypeScript para JavaScript nativo em dist/
-RUN npm run build
+RUN npm run build && cp -r dashboard dist/dashboard
 
 # Limpa dependências de desenvolvimento para o runner
 RUN npm prune --production

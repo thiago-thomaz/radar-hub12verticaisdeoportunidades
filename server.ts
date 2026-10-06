@@ -55,8 +55,22 @@ const PORT = process.env.PORT || 3000;
 app.use(cors());
 app.use(express.json());
 
-// Servir frontend estático do cockpit
-app.use(express.static(path.join(__dirname, 'dashboard')));
+// Servir frontend estático do cockpit (compatível com dev tsx e dist compilado em produção)
+const dashboardPath = fs.existsSync(path.join(__dirname, 'dashboard'))
+  ? path.join(__dirname, 'dashboard')
+  : (fs.existsSync(path.join(__dirname, '../dashboard'))
+    ? path.join(__dirname, '../dashboard')
+    : path.join(process.cwd(), 'dashboard'));
+
+app.use(express.static(dashboardPath));
+
+app.get('/', (req: Request, res: Response) => {
+  const indexPath = path.join(dashboardPath, 'index.html');
+  if (fs.existsSync(indexPath)) {
+    return res.sendFile(indexPath);
+  }
+  return res.status(200).send('RADAR_HUB Backend Operational');
+});
 
 // PostgreSQL Pool
 const pool = new Pool({
