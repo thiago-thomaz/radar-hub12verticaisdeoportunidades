@@ -48,6 +48,20 @@ async function verifyAllLinks() {
       continue;
     }
 
+    // 2.1 Validação de Deep Link (proibido homepage genérica raiz - deve ser link direto de produto/edital)
+    try {
+      const parsedUrl = new URL(url);
+      if (parsedUrl.pathname === '/' || parsedUrl.pathname === '') {
+        console.error(`  ❌ FALHA: URL é uma homepage raiz genérica (${url}). Deve apontar diretamente para o produto final!`);
+        failedCount++;
+        continue;
+      }
+    } catch {
+      console.error(`  ❌ FALHA: URL inválida (${url})`);
+      failedCount++;
+      continue;
+    }
+
     // 3. Requisição HTTP real para validar liveness e conteúdo
     try {
       const res = await fetch(url, {

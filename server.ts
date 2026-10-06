@@ -1206,6 +1206,37 @@ async function seedInitialVerifiedOpportunities() {
     const allOpps = firecrawl.getAllUnifiedOpportunities();
     console.log(`[SEED] Sincronizando catálogo completo com o PostgreSQL (${allOpps.length} oportunidades verificadas)...`);
     
+    // Purga quaisquer links legados que apontavam para homepages raiz
+    await pool.query(`
+      DELETE FROM radar_hub.opportunities 
+      WHERE source_url ~ '^https?://[^/]+/?$'
+         OR source_url IN (
+           'https://www.seven7imoveis.com.br/',
+           'https://www.cuponomia.com.br/',
+           'https://www.marcotulioimoveis.com.br/',
+           'https://www.bauru.sp.gov.br/',
+           'https://www.pestanaleiloes.com.br/',
+           'https://www.palaciodosleiloes.com.br/',
+           'https://www.vivaleiloes.com.br/',
+           'https://www.zukerman.com.br/',
+           'https://www.tce.sp.gov.br/',
+           'https://www.bec.sp.gov.br/',
+           'https://www.amedigital.com/',
+           'https://www.bancointer.com.br/',
+           'https://picpay.com/',
+           'https://www.unilever.com.br/',
+           'https://www.seara.com.br/',
+           'https://www.bauducco.com.br/',
+           'https://passageirodeprimeira.com/',
+           'https://www.outlier.ai/',
+           'https://app.outlier.ai/',
+           'https://jobs.oneforma.com/',
+           'https://www.prolific.com/',
+           'https://remotive.com/',
+           'https://www.pegadesconto.com.br/'
+         );
+    `).catch(() => {});
+
     for (const opp of allOpps) {
       await pool.query(`
         INSERT INTO radar_hub.opportunities (
