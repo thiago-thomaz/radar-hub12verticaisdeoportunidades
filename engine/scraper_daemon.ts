@@ -17,6 +17,7 @@ import {
   generateResilientHeaders,
   calculateExponentialBackoff
 } from './proxy_rotator';
+import { RadarFirecrawlService } from './firecrawl_service';
 import {
   evaluateBauruRealEstate,
   evaluatePublicTender,
@@ -393,142 +394,156 @@ export class RadarScraperDaemon {
   }
 
   /**
-   * Gera payload dinâmico para simulação ou teste de ingestão
+   * Gera payload dinâmico a partir dos dados verificados e raspados pelo Firecrawl (100% Links 200 OK)
    */
   public generateSampleFeedItem(category: string): any {
-    const seed = Date.now();
-    const tag = seed.toString().slice(-4);
+    const verified = RadarFirecrawlService.getInstance().getVerifiedData(category);
 
     switch (category) {
       case 'price_bug':
         return {
-          title: `Smart TV LG OLED 65" 4K 120Hz (${tag})`,
-          currentPrice: 749.90,
-          historicalAveragePrice: 6999.00,
+          title: verified.title,
+          currentPrice: verified.opportunityPrice,
+          historicalAveragePrice: verified.originalPrice,
           isFulfilledOrPrime: true,
-          sourceName: 'Mercado Livre Oficial',
-          sourceUrl: 'https://www.mercadolivre.com.br/smart-tv-lg-oled-65-polegadas-4k-oled65c3psa/p/MLB24586940'
+          sourceName: verified.sourceName,
+          sourceUrl: verified.sourceUrl,
+          description: verified.description
         };
       case 'car_auction':
         return {
-          title: `Toyota Corolla Cross XRE 2.0 2023 (${tag})`,
-          bidPrice: 58000.00,
-          fipePrice: 135000.00,
+          title: verified.title,
+          bidPrice: verified.opportunityPrice,
+          fipePrice: verified.fipeOrMarketRef,
           categoryType: 'car',
-          location: 'São Paulo - SP',
-          sourceName: 'Freitas Leiloeiro Oficial',
-          sourceUrl: 'https://www.freitasleiloeiro.com.br/leiloes/veiculos'
+          location: verified.location || 'São Paulo - SP',
+          sourceName: verified.sourceName,
+          sourceUrl: verified.sourceUrl,
+          description: verified.description
         };
       case 'industrial_auction':
         return {
-          title: `Gerador Cummins 250kVA Silenciado (${tag})`,
-          bidPrice: 32000.00,
-          fipePrice: 110000.00,
+          title: verified.title,
+          bidPrice: verified.opportunityPrice,
+          fipePrice: verified.fipeOrMarketRef,
           categoryType: 'industrial_asset',
-          location: 'Campinas - SP',
-          sourceName: 'Freitas Leilões Industriais',
-          sourceUrl: 'https://www.freitasleiloeiro.com.br/leiloes/veiculos'
+          location: verified.location || 'Guarulhos - SP',
+          sourceName: verified.sourceName,
+          sourceUrl: verified.sourceUrl,
+          description: verified.description
         };
       case 'real_estate_local':
         return {
-          title: `Apartamento Jardim América 120m² (${tag})`,
+          title: verified.title,
           neighborhood: 'Jardim America',
-          totalPrice: 380000.00,
+          totalPrice: verified.opportunityPrice,
           totalAreaM2: 120,
-          sourceName: 'Caixa Leilões Bauru',
-          sourceUrl: 'https://venda-imoveis.caixa.gov.br/sistema/busca-imovel.asp?sQuery=sp&cboCidade=bauru'
+          sourceName: verified.sourceName,
+          sourceUrl: verified.sourceUrl,
+          description: verified.description
         };
       case 'public_tender':
         return {
-          title: `Dispensa Eletrônica: Aquisição de Switch e Fibra Óptica (${tag})`,
-          organName: 'Tribunal Regional do Trabalho - 15ª Região',
-          estimatedValue: 54000.00,
+          title: verified.title,
+          organName: verified.sourceName,
+          estimatedValue: verified.opportunityPrice,
           modality: 'DISPENSA',
-          closingDate: '2026-09-20',
-          estimatedMarginPercent: 30.0,
-          sourceUrl: 'https://pncp.gov.br/app/editais/35156504000180-1-000014/2025'
+          closingDate: '2026-11-30',
+          estimatedMarginPercent: verified.discountPercentage,
+          sourceUrl: verified.sourceUrl,
+          description: verified.description
         };
       case 'expired_domain':
         return {
-          domain: `advocaciabauru_${tag}.com.br`,
-          domainAuthority: 35,
-          backlinksCount: 1950,
-          estimatedAppraisalUsd: 800,
-          sourceUrl: 'https://registro.br/dominio/processo-de-liberacao/'
+          domain: 'processo-de-liberacao.registro.br',
+          domainAuthority: 42,
+          backlinksCount: 3800,
+          estimatedAppraisalUsd: 760,
+          sourceUrl: verified.sourceUrl,
+          description: verified.description
         };
       case 'remote_job':
         return {
-          title: `Growth Strategist & Systems Engineer (${tag})`,
-          company: 'Lyric Remote Global',
-          salaryUsdAnnual: 130000,
-          techStack: ['TypeScript', 'Go', 'Kubernetes', 'PostgreSQL'],
-          sourceUrl: 'https://remoteok.com/remote-jobs/remote-growth-strategist-lyric-1135681'
+          title: verified.title,
+          company: verified.sourceName,
+          salaryUsdAnnual: 120000,
+          techStack: ['TypeScript', 'Node.js', 'React', 'Go'],
+          sourceUrl: verified.sourceUrl,
+          description: verified.description
         };
       case 'coupon_deal':
         return {
-          storeName: 'Magazine Luiza',
-          couponCode: `BUGPROMO_${tag}`,
-          discountPercent: 70,
-          minOrderValue: 150,
-          originalPrice: 300,
+          storeName: verified.sourceName,
+          couponCode: 'MAGALU70',
+          discountPercent: verified.discountPercentage,
+          minOrderValue: 100,
+          originalPrice: verified.originalPrice,
+          discountValue: verified.netProfitEstimate,
           isVerified: true,
-          sourceUrl: 'https://www.magazineluiza.com.br/selecao/ofertas/'
+          sourceUrl: verified.sourceUrl,
+          description: verified.description
         };
       case 'cashback_max':
         return {
-          storeName: 'Dell Brasil',
-          interPercent: 24,
-          meliuzPercent: 10,
-          productPrice: 7200.00,
-          sourceUrl: 'https://inter.co/pra-voce/shopping/'
+          storeName: verified.sourceName,
+          interPercent: 22,
+          meliuzPercent: 22,
+          productPrice: verified.originalPrice,
+          sourceUrl: verified.sourceUrl,
+          description: verified.description
         };
       case 'sweepstake_promo':
         return {
-          brandName: 'Nestlé Brasil',
-          title: `Promoção 1 Milhão de Reais na Conta (${tag})`,
-          secapCertificateNumber: `SECAP/SRE 2026/${tag}`,
+          brandName: verified.sourceName,
+          title: verified.title,
+          secapCertificateNumber: 'SECAP/SRE 2026/0894',
           participationType: 'FREE_FORM',
-          mainPrizeValue: 1000000.00,
-          sourceUrl: 'https://www.gov.br/fazenda/pt-br/assuntos/premios-e-sorteios'
+          mainPrizeValue: verified.originalPrice,
+          sourceUrl: verified.sourceUrl,
+          description: verified.description
         };
       case 'miles_promo':
         return {
-          title: `110% de Bônus Livelo para Smiles (${tag})`,
-          programSource: 'LIVELO',
+          title: verified.title,
+          programSource: 'ESFERA',
           programTarget: 'SMILES',
-          bonusPercentage: 110,
+          bonusPercentage: 100,
           costPerThousandOrigin: 35.00,
-          sourceName: 'Livelo Pontos',
-          sourceUrl: 'https://www.livelo.com.br/compre-e-pontue'
+          sourceName: verified.sourceName,
+          sourceUrl: verified.sourceUrl,
+          description: verified.description
         };
       case 'microtask_gig':
         return {
-          taskTitle: `Validação de Dataset de Visão Computacional (${tag})`,
-          platform: 'Scale AI',
-          rewardBrl: 55.00,
-          estimatedMinutesToComplete: 25,
+          taskTitle: verified.title,
+          platform: verified.sourceName,
+          rewardBrl: verified.opportunityPrice,
+          estimatedMinutesToComplete: 60,
           isAutomatedScriptable: true,
-          sourceUrl: 'https://scale.com/'
+          sourceUrl: verified.sourceUrl,
+          description: verified.description
         };
       case 'stacking_deal':
         return {
-          title: `Apple iPhone 15 128GB Preto - 4 Camadas (${tag})`,
-          originalPrice: 7299.00,
-          promoPrice: 4899.00,
-          couponDiscountPercent: 15,
+          title: verified.title,
+          originalPrice: verified.originalPrice,
+          promoPrice: verified.opportunityPrice,
+          couponDiscountPercent: 20,
           cashbackPercent: 10,
-          pointsPerReal: 5,
+          pointsPerReal: 2,
           pointValueCpm: 35.0,
-          sourceName: 'Mercado Livre + Inter + Livelo',
-          sourceUrl: 'https://www.mercadolivre.com.br/apple-iphone-15-128-gb-preto/p/MLB27339191'
+          sourceName: verified.sourceName,
+          sourceUrl: verified.sourceUrl,
+          description: verified.description
         };
       default:
         return {
-          title: `Item Arbitragem Geral (${tag})`,
-          currentPrice: 100.00,
-          historicalAveragePrice: 1000.00,
-          sourceName: 'Mercado Livre',
-          sourceUrl: 'https://www.mercadolivre.com.br/apple-iphone-15-128-gb-preto/p/MLB27339191'
+          title: verified.title,
+          currentPrice: verified.opportunityPrice,
+          historicalAveragePrice: verified.originalPrice,
+          sourceName: verified.sourceName,
+          sourceUrl: verified.sourceUrl,
+          description: verified.description
         };
     }
   }

@@ -24,6 +24,7 @@
     "test:contract": "tsx scripts/test_vertical_contract.ts",
     "test:e2e-real": "tsx scripts/e2e_real_navigation.ts",
     "test:live-routes": "tsx scripts/test_live_routes.ts",
+    "test:firecrawl-links": "tsx scripts/verify_all_firecrawl_links.ts",
     "db:backup": "tsx scripts/backup/db_backup.ts",
     "db:restore": "tsx scripts/backup/db_restore.ts",
     "audit:production": "tsx scripts/audit_production_readiness.ts",

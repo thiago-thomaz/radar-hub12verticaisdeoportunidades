@@ -31,3 +31,4 @@ export * from './pdf_report_generator';
 export * from './social_poster';
 export * from './routes_registry';
 export * from './native_orchestrator';
+export * from './firecrawl_service';

@@ -43,7 +43,8 @@ import {
   RadarBroadcastSegmenter,
   RadarPdfReportGenerator,
   RadarSocialPoster,
-  RadarNativeOrchestrator
+  RadarNativeOrchestrator,
+  RadarFirecrawlService
 } from './engine';
 
 dotenv.config();
@@ -492,6 +493,50 @@ app.get('/api/opportunities/:id', async (req: Request, res: Response) => {
   }
 });
 
+// ==============================================================================
+// ENDPOINTS FIRECRAWL (RASPAGEM, BUSCA E DADOS EXATOS VERIFICADOS)
+// ==============================================================================
+
+app.get('/api/firecrawl/opportunities', (req: Request, res: Response) => {
+  try {
+    const firecrawlService = RadarFirecrawlService.getInstance();
+    const verified = firecrawlService.getAllUnifiedOpportunities();
+    res.json({
+      success: true,
+      count: verified.length,
+      opportunities: verified
+    });
+  } catch (err: any) {
+    res.status(500).json({ success: false, error: err.message });
+  }
+});
+
+app.post('/api/firecrawl/scrape', async (req: Request, res: Response) => {
+  try {
+    const { url, formats, onlyMainContent } = req.body;
+    if (!url) return res.status(400).json({ success: false, error: 'URL é obrigatória' });
+
+    const firecrawlService = RadarFirecrawlService.getInstance();
+    const result = await firecrawlService.scrapeUrl(url, { formats, onlyMainContent });
+    res.json({ success: true, data: result });
+  } catch (err: any) {
+    res.status(500).json({ success: false, error: err.message });
+  }
+});
+
+app.post('/api/firecrawl/search', async (req: Request, res: Response) => {
+  try {
+    const { query, limit } = req.body;
+    if (!query) return res.status(400).json({ success: false, error: 'query é obrigatória' });
+
+    const firecrawlService = RadarFirecrawlService.getInstance();
+    const results = await firecrawlService.searchWeb(query, limit || 3);
+    res.json({ success: true, data: results });
+  } catch (err: any) {
+    res.status(500).json({ success: false, error: err.message });
+  }
+});
+
 // Endpoint de Avaliação e Broadcast em Tempo Real
 app.post('/api/evaluate', async (req: Request, res: Response) => {
   try {
@@ -514,6 +559,7 @@ app.post('/api/evaluate', async (req: Request, res: Response) => {
         unified = RadarScoringEngine.processStackingDeal(payload);
         break;
       case 'real_estate_local': {
+        const verified = RadarFirecrawlService.getInstance().getVerifiedData('real_estate_local');
         const r = evaluateBauruRealEstate(payload);
         unified = {
           category: 'real_estate_local' as any,
@@ -524,17 +570,18 @@ app.post('/api/evaluate', async (req: Request, res: Response) => {
           discount_percentage: r.discountVsBenchmarkPercent,
           net_profit_estimate: r.netDiscount,
           fipe_or_market_ref: r.marketEstimatedTotal,
-          location: `Bauru - ${payload.neighborhood}`,
-          source_name: payload.sourceName || 'Imóveis Bauru',
-          source_url: payload.sourceUrl || 'https://caixa.gov.br/imoveis',
+          location: `Bauru - ${payload.neighborhood || 'Jardim America'}`,
+          source_name: payload.sourceName || verified.sourceName,
+          source_url: payload.sourceUrl || verified.sourceUrl,
           evaluation_score: r.score,
           priority: r.priority,
           raw_metadata: r,
-          fingerprint_hash: generateFingerprint(payload.sourceName || 'Bauru', payload.sourceUrl || payload.title, payload.totalPrice)
+          fingerprint_hash: generateFingerprint(payload.sourceName || verified.sourceName, payload.sourceUrl || verified.sourceUrl, payload.totalPrice)
         };
         break;
       }
       case 'public_tender': {
+        const verified = RadarFirecrawlService.getInstance().getVerifiedData('public_tender');
         const r = evaluatePublicTender(payload);
         unified = {
           category: 'public_tender' as any,
@@ -545,16 +592,17 @@ app.post('/api/evaluate', async (req: Request, res: Response) => {
           discount_percentage: payload.estimatedMarginPercent || 25,
           net_profit_estimate: r.estimatedProfit,
           fipe_or_market_ref: payload.estimatedValue,
-          source_name: payload.organName || 'PNCP',
-          source_url: payload.sourceUrl || 'https://pncp.gov.br',
+          source_name: payload.organName || verified.sourceName,
+          source_url: payload.sourceUrl || verified.sourceUrl,
           evaluation_score: r.score,
           priority: r.priority,
           raw_metadata: r,
-          fingerprint_hash: generateFingerprint(payload.organName || 'PNCP', payload.sourceUrl || payload.title, payload.estimatedValue)
+          fingerprint_hash: generateFingerprint(payload.organName || verified.sourceName, payload.sourceUrl || verified.sourceUrl, payload.estimatedValue)
         };
         break;
       }
       case 'expired_domain': {
+        const verified = RadarFirecrawlService.getInstance().getVerifiedData('expired_domain');
         const r = evaluateExpiredDomain(payload);
         unified = {
           category: 'expired_domain' as any,
@@ -565,8 +613,8 @@ app.post('/api/evaluate', async (req: Request, res: Response) => {
           discount_percentage: 98.5,
           net_profit_estimate: r.estimatedValueBrl - 40.00,
           fipe_or_market_ref: r.estimatedValueBrl,
-          source_name: 'Registro.br Drop',
-          source_url: payload.sourceUrl || `https://registro.br/busca-dominio/?q=${payload.domain}`,
+          source_name: verified.sourceName,
+          source_url: payload.sourceUrl || verified.sourceUrl,
           evaluation_score: r.score,
           priority: r.priority,
           raw_metadata: r,
@@ -575,6 +623,7 @@ app.post('/api/evaluate', async (req: Request, res: Response) => {
         break;
       }
       case 'remote_job': {
+        const verified = RadarFirecrawlService.getInstance().getVerifiedData('remote_job');
         const r = evaluateRemoteJob(payload);
         unified = {
           category: 'remote_job' as any,
@@ -585,56 +634,59 @@ app.post('/api/evaluate', async (req: Request, res: Response) => {
           discount_percentage: 0,
           net_profit_estimate: r.monthlyBrl,
           fipe_or_market_ref: r.monthlyBrl,
-          source_name: payload.company || 'Remote Global',
-          source_url: payload.sourceUrl || 'https://remoteok.com',
+          source_name: payload.company || verified.sourceName,
+          source_url: payload.sourceUrl || verified.sourceUrl,
           evaluation_score: r.score,
           priority: r.priority,
           raw_metadata: r,
-          fingerprint_hash: generateFingerprint(payload.company || 'Remote', payload.sourceUrl || payload.title, r.monthlyBrl)
+          fingerprint_hash: generateFingerprint(payload.company || verified.sourceName, payload.sourceUrl || verified.sourceUrl, r.monthlyBrl)
         };
         break;
       }
       case 'coupon_deal': {
+        const verified = RadarFirecrawlService.getInstance().getVerifiedData('coupon_deal');
         const r = evaluateCoupon(payload);
         unified = {
           category: 'coupon_deal' as any,
-          title: `Cupom ${r.couponCode} na ${payload.storeName}`,
+          title: `Cupom ${r.couponCode} na ${payload.storeName || verified.sourceName}`,
           description: r.description,
           original_price: payload.discountValue || 100,
           opportunity_price: payload.discountValue || 100,
           discount_percentage: payload.discountPercent || 20,
           net_profit_estimate: payload.discountValue || 50,
           fipe_or_market_ref: payload.discountValue || 100,
-          source_name: payload.storeName,
-          source_url: payload.sourceUrl || 'https://magazineluiza.com.br/cupons',
+          source_name: payload.storeName || verified.sourceName,
+          source_url: payload.sourceUrl || verified.sourceUrl,
           evaluation_score: r.score,
           priority: r.priority,
           raw_metadata: r,
-          fingerprint_hash: generateFingerprint(payload.storeName, r.couponCode, payload.discountValue || 10)
+          fingerprint_hash: generateFingerprint(payload.storeName || verified.sourceName, r.couponCode, payload.discountValue || 10)
         };
         break;
       }
       case 'cashback_max': {
+        const verified = RadarFirecrawlService.getInstance().getVerifiedData('cashback_max');
         const r = evaluateCashback(payload);
         unified = {
           category: 'cashback_max' as any,
-          title: `${r.bestRate}% Cashback em ${payload.storeName}`,
+          title: `${r.bestRate}% Cashback em ${payload.storeName || verified.sourceName}`,
           description: r.summary,
           original_price: payload.productPrice,
           opportunity_price: payload.productPrice - r.cashValue,
           discount_percentage: r.bestRate,
           net_profit_estimate: r.cashValue,
           fipe_or_market_ref: payload.productPrice,
-          source_name: r.bestProvider,
-          source_url: payload.sourceUrl || 'https://bancointer.com.br/cashback',
+          source_name: r.bestProvider || verified.sourceName,
+          source_url: payload.sourceUrl || verified.sourceUrl,
           evaluation_score: r.score,
           priority: r.priority,
           raw_metadata: r,
-          fingerprint_hash: generateFingerprint(r.bestProvider, payload.storeName, r.bestRate)
+          fingerprint_hash: generateFingerprint(r.bestProvider || verified.sourceName, payload.storeName, r.bestRate)
         };
         break;
       }
       case 'sweepstake_promo': {
+        const verified = RadarFirecrawlService.getInstance().getVerifiedData('sweepstake_promo');
         const r = evaluateSweepstake(payload);
         unified = {
           category: 'sweepstake_promo' as any,
@@ -645,16 +697,17 @@ app.post('/api/evaluate', async (req: Request, res: Response) => {
           discount_percentage: 100,
           net_profit_estimate: payload.mainPrizeValue,
           fipe_or_market_ref: payload.mainPrizeValue,
-          source_name: `SECAP / ${payload.brandName}`,
-          source_url: payload.sourceUrl || 'https://promonestle.com.br/sorteios',
+          source_name: payload.brandName || verified.sourceName,
+          source_url: payload.sourceUrl || verified.sourceUrl,
           evaluation_score: r.score,
           priority: r.priority,
           raw_metadata: r,
-          fingerprint_hash: generateFingerprint(payload.brandName, payload.title, payload.mainPrizeValue)
+          fingerprint_hash: generateFingerprint(payload.brandName || verified.sourceName, payload.title, payload.mainPrizeValue)
         };
         break;
       }
       case 'microtask_gig': {
+        const verified = RadarFirecrawlService.getInstance().getVerifiedData('microtask_gig');
         const r = evaluateMicrotask(payload);
         unified = {
           category: 'microtask_gig' as any,
@@ -665,12 +718,12 @@ app.post('/api/evaluate', async (req: Request, res: Response) => {
           discount_percentage: 0,
           net_profit_estimate: payload.rewardBrl,
           fipe_or_market_ref: r.hourlyRate,
-          source_name: payload.platform,
-          source_url: payload.sourceUrl || 'https://scale.com/gigs',
+          source_name: payload.platform || verified.sourceName,
+          source_url: payload.sourceUrl || verified.sourceUrl,
           evaluation_score: r.score,
           priority: r.priority,
           raw_metadata: r,
-          fingerprint_hash: generateFingerprint(payload.platform, payload.taskTitle, payload.rewardBrl)
+          fingerprint_hash: generateFingerprint(payload.platform || verified.sourceName, payload.taskTitle, payload.rewardBrl)
         };
         break;
       }
